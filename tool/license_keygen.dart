@@ -8,7 +8,7 @@
 //   flutter build apk --dart-define=BH_LICENSE_SECRET=<SEGRETO>
 import 'dart:io';
 
-import 'package:blue_haccp/core/license/license_codec.dart';
+import 'package:haccpass/core/license/license_codec.dart';
 
 void main(List<String> args) {
   String? secret;

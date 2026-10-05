@@ -1005,7 +1005,7 @@ class _CloudStepState extends State<CloudStep> {
                 'gdrive',
                 'Google Drive',
                 Icons.cloud_outlined,
-                'Cartella \u201CBlue HACCP\u201D nel tuo Drive: backup '
+                'Cartella \u201CHACCPass\u201D nel tuo Drive: backup '
                     'automatici e copia di PDF e foto'
               ),
               if (onIOS)

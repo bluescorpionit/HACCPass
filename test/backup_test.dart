@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/database/app_database.dart';
-import 'package:blue_haccp/repositories/haccp_repository.dart';
-import 'package:blue_haccp/services/backup_service.dart';
+import 'package:haccpass/core/database/app_database.dart';
+import 'package:haccpass/repositories/haccp_repository.dart';
+import 'package:haccpass/services/backup_service.dart';
 
 void main() {
   late Directory tempDir;

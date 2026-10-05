@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <application
-        android:label="Blue HACCP"
+        android:label="HACCPass"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -1,6 +1,6 @@
 {
-    "name": "blue_haccp",
-    "short_name": "blue_haccp",
+    "name": "HACCPass",
+    "short_name": "HACCPass",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

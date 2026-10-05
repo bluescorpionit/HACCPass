@@ -9,4 +9,9 @@ flutter_native_splash:
   android_12:
     color: "#F1F5F4"
     color_dark: "#0E1615"
-    image: assets/images/logo.png
+    # Android 12+ ritaglia SEMPRE l'icona centrale della splash in un
+    # cerchio (vincolo del sistema, non configurabile). Per evitare il
+    # cerchio si usa un'immagine trasparente: la splash nativa mostra
+    # solo il colore di sfondo e il logo integrale, non ritagliato,
+    # appare nella splash in-app (vedi _InAppSplash in lib/main.dart).
+    image: assets/images/splash_icon_blank.png

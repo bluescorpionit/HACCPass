@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/theme/app_theme.dart';
+import 'package:haccpass/core/theme/app_theme.dart';
 
 void main() {
   test('il design system definisce tema chiaro e scuro', () {

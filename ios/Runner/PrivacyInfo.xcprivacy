@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- Privacy manifest: motivi d'uso delle API "required reason".
-	     Blue HACCP non raccoglie né invia dati a server dello
+	     HACCPass non raccoglie né invia dati a server dello
 	     sviluppatore: in App Store Connect dichiarare "Dati non raccolti". -->
 	<key>NSPrivacyTracking</key>
 	<false/>

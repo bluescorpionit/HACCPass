@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "blue_haccp" "\0"
+            VALUE "FileDescription", "HACCPass" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "blue_haccp" "\0"
+            VALUE "InternalName", "haccpass" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "blue_haccp.exe" "\0"
-            VALUE "ProductName", "blue_haccp" "\0"
+            VALUE "OriginalFilename", "haccpass.exe" "\0"
+            VALUE "ProductName", "HACCPass" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

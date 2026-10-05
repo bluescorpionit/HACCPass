@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/constants/haccp_rules.dart';
-import 'package:blue_haccp/models/haccp_models.dart';
+import 'package:haccpass/core/constants/haccp_rules.dart';
+import 'package:haccpass/models/haccp_models.dart';
 
 void main() {
   group('CleaningTask.state', () {

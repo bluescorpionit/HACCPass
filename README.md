@@ -1,4 +1,4 @@
-# Blue HACCP
+# HACCPass
 
 App Flutter per l'autocontrollo alimentare (HACCP) di piccoli esercizi italiani:
 bar, ristoranti, pizzerie, gastronomie, caseifici, laboratori. **Offline-first**:
@@ -122,7 +122,7 @@ merci respinte finiscono nell'appendice fotografica del dossier.
   opzionale il collegamento a **Google Drive** per backup automatici e copia
   di PDF e foto. Su iPhone in v1 salvataggio tramite app File/iCloud.
 - `CloudStorageProvider` astratto: `GoogleDriveProvider` (scope minimo
-  **`drive.file`**, cartella visibile "Blue HACCP" con Backup/Report/Foto) e
+  **`drive.file`**, cartella visibile "HACCPass" con Backup/Report/Foto) e
   `LocalFilesProvider`. Pulsante "Scollega" che revoca i token.
 - **Backup `.bhb`**: ZIP con DB + `manifest.json` (versione schema, versione
   app, data, hash SHA-256). Cifratura facoltativa AES-256-GCM con chiave

@@ -156,7 +156,7 @@ class MoreScreen extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Blue HACCP',
+                        'HACCPass',
                         style: theme.textTheme.titleSmall
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),

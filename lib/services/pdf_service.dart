@@ -85,7 +85,7 @@ class PdfService {
                   ),
                 ),
                 pw.Text(
-                  company.address.isEmpty ? 'Blue HACCP' : company.address,
+                  company.address.isEmpty ? 'HACCPass' : company.address,
                   style: pw.TextStyle(fontSize: 8, color: _muted),
                 ),
               ],
@@ -123,7 +123,7 @@ class PdfService {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Generato il ${_fmt(generatedAt)} \u2022 Blue HACCP',
+            'Generato il ${_fmt(generatedAt)} \u2022 HACCPass',
             style: pw.TextStyle(fontSize: 7.5, color: _muted),
           ),
           pw.Text(

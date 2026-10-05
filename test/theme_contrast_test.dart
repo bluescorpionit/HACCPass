@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/theme/app_theme.dart';
-import 'package:blue_haccp/widgets/common_widgets.dart';
+import 'package:haccpass/core/theme/app_theme.dart';
+import 'package:haccpass/widgets/common_widgets.dart';
 
 /// Rapporto di contrasto WCAG tra due colori.
 double contrastRatio(Color a, Color b) {

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/constants/business_templates.dart';
-import 'package:blue_haccp/services/onboarding/onboarding_controller.dart';
+import 'package:haccpass/core/constants/business_templates.dart';
+import 'package:haccpass/services/onboarding/onboarding_controller.dart';
 
 void main() {
   // Costruisce una P.IVA valida calcolando la cifra di controllo come

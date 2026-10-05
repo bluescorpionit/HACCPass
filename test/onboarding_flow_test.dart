@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:blue_haccp/core/database/app_database.dart';
-import 'package:blue_haccp/repositories/haccp_repository.dart';
-import 'package:blue_haccp/screens/onboarding/onboarding_screen.dart';
-import 'package:blue_haccp/services/attachment_service.dart';
-import 'package:blue_haccp/services/license_service.dart';
-import 'package:blue_haccp/services/reminder_service.dart';
+import 'package:haccpass/core/database/app_database.dart';
+import 'package:haccpass/repositories/haccp_repository.dart';
+import 'package:haccpass/screens/onboarding/onboarding_screen.dart';
+import 'package:haccpass/services/attachment_service.dart';
+import 'package:haccpass/services/license_service.dart';
+import 'package:haccpass/services/reminder_service.dart';
 
 void main() {
   sqfliteFfiInit();

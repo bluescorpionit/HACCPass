@@ -91,7 +91,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
           SnackBar(
             content: Text(
               'Google Drive collegato (${provider.accountLabel ?? ''}). '
-              'Verr\u00E0 creata la cartella \u201CBlue HACCP\u201D.',
+              'Verr\u00E0 creata la cartella \u201CHACCPass\u201D.',
             ),
           ),
         );

@@ -179,7 +179,7 @@ class ReminderService {
     await _plugin.show(
       id: 199,
       title: 'Promemoria di prova',
-      body: 'Cos\u00EC compariranno i promemoria di Blue HACCP.',
+      body: 'Cos\u00EC compariranno i promemoria di HACCPass.',
       notificationDetails: _details,
     );
   }

@@ -81,7 +81,7 @@ Future<void> main() async {
   final minimumSplash = Future<void>.delayed(const Duration(milliseconds: 800));
 
   runApp(
-    BlueHaccpApp(
+    HaccpassApp(
       services: services,
       minimumSplash: minimumSplash,
       printerService: DemoPrinterService(),
@@ -110,8 +110,8 @@ Future<void> _restoreCloudSession(
   }
 }
 
-class BlueHaccpApp extends StatelessWidget {
-  const BlueHaccpApp({
+class HaccpassApp extends StatelessWidget {
+  const HaccpassApp({
     super.key,
     required this.services,
     required this.minimumSplash,
@@ -125,7 +125,7 @@ class BlueHaccpApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Blue HACCP',
+      title: 'HACCPass',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
@@ -236,7 +236,7 @@ class _InAppSplashState extends State<_InAppSplash>
             : logo,
         const SizedBox(height: 24),
         Text(
-          'Blue HACCP',
+          'HACCPass',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.primary,

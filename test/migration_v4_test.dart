@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:blue_haccp/core/database/app_database.dart';
-import 'package:blue_haccp/repositories/haccp_repository.dart';
+import 'package:haccpass/core/database/app_database.dart';
+import 'package:haccpass/repositories/haccp_repository.dart';
 
 void main() {
   sqfliteFfiInit();

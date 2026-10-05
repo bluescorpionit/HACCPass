@@ -34,7 +34,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
       builder: (context, _) {
         final theme = Theme.of(context);
         return Scaffold(
-          appBar: AppBar(title: const Text('Licenza Blue HACCP')),
+          appBar: AppBar(title: const Text('Licenza HACCPass')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
         children: [
@@ -59,7 +59,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
           const SizedBox(height: 8),
           Center(
             child: Text(
-              'Blue HACCP',
+              'HACCPass',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: theme.colorScheme.primary,

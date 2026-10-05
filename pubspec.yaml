@@ -1,4 +1,4 @@
-name: blue_haccp
+name: haccpass
 description: App HACCP locale per smartphone e tablet, senza server.
 publish_to: "none"
 version: 1.0.0+2

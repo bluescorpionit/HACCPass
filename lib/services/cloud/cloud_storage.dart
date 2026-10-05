@@ -25,12 +25,12 @@ abstract class CloudStorageProvider {
   /// Revoca i token e cancella le credenziali locali.
   Future<void> disconnect();
 
-  /// Garantisce che esista la cartella radice "Blue HACCP" (o equivalente)
+  /// Garantisce che esista la cartella radice "HACCPass" (o equivalente)
   /// e le sottocartelle indicate. Restituisce l'identificativo della
   /// sottocartella richiesta.
   Future<String> ensureFolder(String subfolder);
 
-  /// Carica un file locale in una sottocartella di "Blue HACCP".
+  /// Carica un file locale in una sottocartella di "HACCPass".
   /// Restituisce l'id remoto del file caricato.
   Future<String> upload({
     required String path,

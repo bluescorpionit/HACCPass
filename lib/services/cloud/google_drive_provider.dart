@@ -12,7 +12,7 @@ const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
 
 /// Archivio nel Google Drive **personale** del cliente.
 ///
-/// Cartella visibile "Blue HACCP" con sottocartelle Backup, Report e Foto:
+/// Cartella visibile "HACCPass" con sottocartelle Backup, Report e Foto:
 /// il cliente ritrova i suoi file da qualsiasi dispositivo.
 /// Serve solo come archivio: mai "Accedi con Google" (guideline 4.8 Apple).
 class GoogleDriveProvider extends CloudStorageProvider {
@@ -22,7 +22,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
   GoogleSignInAccount? _account;
   drive.DriveApi? _api;
 
-  static const _rootName = 'Blue HACCP';
+  static const _rootName = 'HACCPass';
   final _folderIds = <String, String>{};
 
   @override

@@ -78,7 +78,7 @@ class BackupService {
       }
 
       final dir = await Directory.systemTemp.createTemp('bh_backup');
-      final name = 'BlueHACCP_backup_$timestamp.bhb';
+      final name = 'HACCPass_backup_$timestamp.bhb';
       final destination = p.join(dir.path, name);
       await File(destination).writeAsBytes(bytes, flush: true);
       return destination;
@@ -153,7 +153,7 @@ class BackupService {
     final dbEntry = archive.find('blue_haccp.db');
     final manifestEntry = archive.find('manifest.json');
     if (dbEntry == null || manifestEntry == null) {
-      throw BackupException('Il file non contiene un backup di Blue HACCP.');
+      throw BackupException('Il file non contiene un backup di HACCPass.');
     }
 
     final dbBytes = Uint8List.fromList(dbEntry.content as List<int>);
@@ -170,7 +170,7 @@ class BackupService {
     if (schemaVersion > 3) {
       throw BackupException(
         'Il backup \u00E8 stato creato con una versione pi\u00F9 recente '
-        'dell\u2019app: aggiorna Blue HACCP prima di ripristinarlo.',
+        'dell\u2019app: aggiorna HACCPass prima di ripristinarlo.',
       );
     }
     if (schemaVersion < 3) {

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blue_haccp/core/license/license_codec.dart';
+import 'package:haccpass/core/license/license_codec.dart';
 
 void main() {
   const secret = 'test-secret-123';
