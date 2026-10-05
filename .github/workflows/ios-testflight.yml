@@ -1,0 +1,59 @@
+name: iOS TestFlight
+
+# Pipeline di riferimento per compilare e distribuire la versione iOS da un
+# runner macOS (GitHub Actions, Codemagic o Xcode Cloud). La compilazione iOS
+# richiede macOS + Xcode: non eseguibile da Windows.
+#
+# Prerequisiti da configurare nei secret del repository:
+#   APPLE_CERTIFICATE_P12_BASE64  certificato di distribuzione
+#   APPLE_PASSWORD                app-specific password (App Store Connect)
+#   KEYCHAIN_PASSWORD             password del portachiavi temporaneo
+#   BH_LICENSE_SECRET             segreto per le chiavi di licenza offline
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Dipendenze
+        run: flutter pub get
+
+      - name: Analisi e test
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Certificato e profili
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Import del certificato nel portachiavi temporaneo e copia dei
+          # profili di provisioning (estrarre anche il mobileprovision).
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import cert.p12 -k build.keychain -P "$KEYCHAIN_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Build iOS (firmata)
+        env:
+          BH_LICENSE_SECRET: ${{ secrets.BH_LICENSE_SECRET }}
+        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --dart-define=BH_LICENSE_SECRET=$BH_LICENSE_SECRET
+
+      - name: Upload su TestFlight
+        env:
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          xcrun altool --upload-app -f build/ios/ipa/*.ipa \
+            -u "$APPLE_ID" -p "$APPLE_PASSWORD" --type ios

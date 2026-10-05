@@ -1,0 +1,17 @@
+# Configurazione flutter_launcher_icons: icona da assets/images/logo.png
+# (1254x1254, RGB senza alpha: idonea anche per iOS).
+# Sfondo adattivo bianco come il fondo del marchio; il sistema maschera
+# la forma (cerchio/squircle) su Android e iOS.
+flutter_launcher_icons:
+  image_path: assets/images/logo.png
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/logo.png
+  web:
+    generate: false
+  macos:
+    generate: false
+  windows:
+    generate: false

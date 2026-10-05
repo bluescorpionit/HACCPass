@@ -1,0 +1,12 @@
+# Configurazione flutter_native_splash: splash nativa con logo,
+# sfondo light/dark coerente con il tema dell'app.
+flutter_native_splash:
+  color: "#F1F5F4"
+  color_dark: "#0E1615"
+  image: assets/images/logo.png
+  fullscreen: false
+
+  android_12:
+    color: "#F1F5F4"
+    color_dark: "#0E1615"
+    image: assets/images/logo.png
