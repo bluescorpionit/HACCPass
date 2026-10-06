@@ -16,7 +16,7 @@ class GuideScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Guida HACCP')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: screenPadding(context),
         children: [
           PageHeader(
             title: 'Come usare l\u2019autocontrollo',
@@ -148,25 +148,47 @@ class GuideScreen extends StatelessWidget {
                   'Rev.2 09/2020): valori di riferimento adattabili.',
             ],
           ),
-          _GuideSection(
-            icon: Icons.campaign_outlined,
-            color: theme.colorScheme.primary,
-            title: 'Cottura, abbattimento, trasporto',
-            bullets: const [
-              'Cottura: \u2265 75 \u00B0C al cuore; rigenerazione \u2265 65 '
-                  '\u00B0C; frittura max 180 \u00B0C senza rabbocchi '
-                  '(PR COT 01/02).',
-              'Abbattimento: positivo +3 \u00B0C entro 2 ore, negativo -18 '
-                  '\u00B0C entro 2 ore (PR ABB, limiti pi\u00F9 ampi '
-                  'configurabili).',
-              'Mantenimento caldo 60-65 \u00B0C, freddo < 10 \u00B0C, gelati '
-                  '-15/-20 \u00B0C; trasporto catering freddi < 10 \u00B0C e '
-                  'caldi > 65 \u00B0C (PR TRA / PR SOM).',
-              'Pasto campione: \u2265 100 g, 0/+4 \u00B0C per 72 ore '
-                  '(PR CAMP 01); acqua e ghiaccio con verifiche periodiche '
-                  '(PR APO).',
-            ],
-          ),
+           _GuideSection(
+             icon: Icons.campaign_outlined,
+             color: theme.colorScheme.primary,
+             title: 'Cottura, abbattimento, trasporto',
+             bullets: const [
+               'Cottura: \u2265 75 \u00B0C al cuore; rigenerazione \u2265 65 '
+                   '\u00B0C; frittura max 180 \u00B0C senza rabbocchi '
+                   '(PR COT 01/02).',
+               'Abbattimento: positivo +3 \u00B0C entro 2 ore, negativo -18 '
+                   '\u00B0C entro 2 ore (PR ABB, limiti pi\u00F9 ampi '
+                   'configurabili).',
+               'Mantenimento caldo 60-65 \u00B0C, freddo < 10 \u00B0C, gelati '
+                   '-15/-20 \u00B0C; trasporto catering freddi < 10 \u00B0C e '
+                   'caldi > 65 \u00B0C (PR TRA / PR SOM).',
+               'Pasto campione: \u2265 100 g, 0/+4 \u00B0C per 72 ore '
+                   '(PR CAMP 01); acqua e ghiaccio con verifiche periodiche '
+                   '(PR APO).',
+             ],
+           ),
+           _GuideSection(
+             icon: Icons.sensors,
+             color: theme.colorScheme.tertiary,
+             title: 'Sensori di temperatura (Govee H5179)',
+             bullets: const [
+               'Ogni attrezzatura pu\u00F2 usare la sorgente Manuale '
+                   '(default) o un sensore collegato: dalla sezione '
+                   'Temperature, "Collega sensore".',
+               'Il sensore misura la temperatura dell\u2019ARIA nel punto in '
+                   'cui \u00E8 installato: non sostituisce le misure con '
+                   'sonda al cuore del prodotto (cottura, abbattimento, '
+                   'ricevimento merce).',
+               'Non \u00E8 uno strumento tarato/certificato: verificalo con '
+                   'il termometro di riferimento (\u00B11 \u00B0C) e ripeti '
+                   'la verifica periodicamente.',
+               'L\u2019eventuale offset di calibrazione \u00E8 sempre visibile '
+                   'e viene registrato con ogni lettura (nel log e nel PDF).',
+               'In celle e congelatori le batterie alcaline durano meno: '
+                   'valuta batterie al litio e controlla il range operativo '
+                   'dichiarato nel manuale del sensore.',
+             ],
+           ),
           Card(
             color: colors.infoBg,
             child: Padding(
@@ -248,6 +270,18 @@ class _GuideSection extends StatelessWidget {
                       const Text('\u2022 '),
                       Expanded(child: Text(bullet)),
                     ],
+                  ),
+                ),
+              if (title == 'Sensori di temperatura (Govee H5179)')
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Govee \u00E8 un marchio dei rispettivi proprietari. '
+                    'HACCPass non \u00E8 affiliata a Govee.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
             ],

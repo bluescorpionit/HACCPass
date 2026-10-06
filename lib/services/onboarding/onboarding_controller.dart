@@ -11,6 +11,8 @@ import '../attachment_service.dart';
 /// Ogni passo salva subito i dati e si pu\u00F2 riprendere; applicare \u00E8
 /// idempotente: le righe create dal wizard (`source = 'wizard'`) vengono
 /// ricostruite, quelle modificate a mano (`source = 'user'`) restano.
+/// Le righe wizard già collegate a registri storici non vengono eliminate:
+/// vengono convertite a `source = 'user'` per preservare i riferimenti.
 class OnboardingController extends ChangeNotifier {
   OnboardingController({
     required this.repository,
@@ -48,6 +50,10 @@ class OnboardingController extends ChangeNotifier {
   // Passo 4
   final Map<String, int> equipmentCounts = {};
   final Map<String, EquipmentEdit> equipmentEdits = {};
+
+  /// Sorgente temperatura delle attrezzature create dal wizard: 'sensor'
+  /// marca l'attrezzatura come da sensore (collegamento vero da Temperature).
+  bool equipmentUseSensor = false;
 
   // Passo 5
   final Set<String> cleaningEnabled = {};
@@ -122,9 +128,8 @@ class OnboardingController extends ChangeNotifier {
       ..addAll(typesRaw.split(',').where((t) => t.isNotEmpty));
 
     final companyProfile = await repository.getCompany();
-    company.name = companyProfile.name == 'La mia attività'
-        ? ''
-        : companyProfile.name;
+    company.name =
+        companyProfile.name == 'La mia attività' ? '' : companyProfile.name;
     company.address = companyProfile.address;
     company.city = companyProfile.city;
     company.vat = companyProfile.vat;
@@ -223,9 +228,7 @@ class OnboardingController extends ChangeNotifier {
     final current = await repository.getCompany();
     await repository.saveCompany(
       CompanyProfile(
-        name: company.name.trim().isEmpty
-            ? current.name
-            : company.name.trim(),
+        name: company.name.trim().isEmpty ? current.name : company.name.trim(),
         address: company.address.trim(),
         city: company.city.trim(),
         vat: company.vat.trim(),
@@ -236,8 +239,7 @@ class OnboardingController extends ChangeNotifier {
         pec: company.pec.trim(),
         healthNotification: company.healthNotification.trim(),
         ateco: company.ateco.trim(),
-        activity:
-            selectedTemplates.map((t) => t.label).join(', '),
+        activity: selectedTemplates.map((t) => t.label).join(', '),
         defaultOperator: current.defaultOperator,
       ),
     );
@@ -260,18 +262,16 @@ class OnboardingController extends ChangeNotifier {
         healthNotification: current.healthNotification,
         ateco: current.ateco,
         activity: current.activity,
-        defaultOperator:
-            people.defaultOperator.trim().isEmpty
-                ? (company.haccpManager.trim().isEmpty
-                    ? current.defaultOperator
-                    : company.haccpManager.trim())
-                : people.defaultOperator.trim(),
+        defaultOperator: people.defaultOperator.trim().isEmpty
+            ? (company.haccpManager.trim().isEmpty
+                ? current.defaultOperator
+                : company.haccpManager.trim())
+            : people.defaultOperator.trim(),
       ),
     );
 
     final existing = await repository.getStaff();
-    final existingNames =
-        existing.map((s) => s.name.toLowerCase()).toSet();
+    final existingNames = existing.map((s) => s.name.toLowerCase()).toSet();
     for (final member in staff) {
       if (member.name.trim().isEmpty) continue;
       if (existingNames.contains(member.name.trim().toLowerCase())) continue;
@@ -295,14 +295,16 @@ class OnboardingController extends ChangeNotifier {
       String type,
       double minTemp,
       double maxTemp,
-      String location
+      String location,
+      String tempSource
     })>[];
     final counters = <String, int>{};
     for (final suggestion in equipmentSuggestions) {
       final count = equipmentCounts[suggestion.key] ?? 0;
       for (var i = 1; i <= count; i++) {
         final edit = equipmentEdits['${suggestion.key}_$i'];
-        final baseName = count > 1 ? '${suggestion.label} $i' : suggestion.label;
+        final baseName =
+            count > 1 ? '${suggestion.label} $i' : suggestion.label;
         counters[suggestion.label] = (counters[suggestion.label] ?? 0) + 1;
         rows.add((
           key: suggestion.key,
@@ -311,6 +313,7 @@ class OnboardingController extends ChangeNotifier {
           minTemp: suggestion.minTemp,
           maxTemp: suggestion.maxTemp,
           location: edit?.location ?? suggestion.location,
+          tempSource: equipmentUseSensor ? 'sensor' : 'manual',
         ));
       }
     }
@@ -369,8 +372,7 @@ class OnboardingController extends ChangeNotifier {
   /// Passo 7: fornitori.
   Future<void> applySuppliers() async {
     final existing = await repository.getSuppliers();
-    final existingNames =
-        existing.map((s) => s.name.toLowerCase()).toSet();
+    final existingNames = existing.map((s) => s.name.toLowerCase()).toSet();
     for (final draft in suppliers) {
       if (draft.name.trim().isEmpty) continue;
       if (existingNames.contains(draft.name.trim().toLowerCase())) continue;
@@ -419,7 +421,8 @@ class OnboardingController extends ChangeNotifier {
 
   /// Passo 10: promemoria (la riprogrammazione reale avviene nel servizio).
   Future<void> saveReminders() async {
-    await repository.setSetting('reminder_temperature_morning', reminderMorning);
+    await repository.setSetting(
+        'reminder_temperature_morning', reminderMorning);
     await repository.setSetting(
       'reminder_temperature_afternoon',
       reminderAfternoon,

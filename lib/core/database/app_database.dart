@@ -46,7 +46,7 @@ class AppDatabase {
 
     _db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -71,12 +71,22 @@ class AppDatabase {
 
   Future<void> _onOpen(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
+    // Retention letture sensori: 90 giorni (potatura all'avvio).
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 90))
+        .millisecondsSinceEpoch;
+    await database.delete(
+      'sensor_readings',
+      where: 'ts < ?',
+      whereArgs: [cutoff],
+    );
   }
 
   Future<void> _onCreate(Database database, int version) async {
     await _createV2Tables(database);
     await _createV3Tables(database);
     await _createV4Tables(database);
+    await _createV5Tables(database);
     await _seed(database);
     await _insertV4Defaults(database);
   }
@@ -91,6 +101,98 @@ class AppDatabase {
     if (oldVersion < 4) {
       await _migrateV3toV4(database);
     }
+    if (oldVersion < 5) {
+      await _migrateV4toV5(database);
+    }
+  }
+
+  /// V5: sensori di temperatura (Prompt 7). Tabella `sensors`, colonne
+  /// `temp_source`/`sensor_id` su equipment (vincolo un sensore ↔ una sola
+  /// attrezzatura via indice univoco parziale) e colonne
+  /// `source`/`sensor_*` su temperature_logs (istantanee che sopravvivono
+  /// all'eliminazione del sensore). Nessun dato esistente viene toccato: i
+  /// default sono 'manual'.
+  Future<void> _createV5Tables(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS sensors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        model_id TEXT NOT NULL,
+        device_key TEXT NOT NULL,
+        system_id TEXT,
+        label TEXT,
+        calibration_offset REAL NOT NULL DEFAULT 0,
+        last_temp REAL,
+        last_humidity REAL,
+        last_seen TEXT,
+        battery INTEGER,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        last_verified_at TEXT
+      )
+    ''');
+
+    await database.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_sensors_device '
+      'ON sensors(device_key)',
+    );
+
+    await _addColumn(
+      database,
+      'equipment',
+      'temp_source',
+      "TEXT NOT NULL DEFAULT 'manual'",
+    );
+    await _addColumn(database, 'equipment', 'sensor_id', 'INTEGER');
+
+    // Un sensore al massimo su UNA attrezzatura: indice univoco parziale
+    // (ignora le righe senza sensore).
+    await database.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_equipment_sensor_unique '
+      'ON equipment(sensor_id) WHERE sensor_id IS NOT NULL',
+    );
+
+    if (await _tableExists(database, 'temperature_logs')) {
+      await _addColumn(
+        database,
+        'temperature_logs',
+        'source',
+        "TEXT NOT NULL DEFAULT 'manual'",
+      );
+      await _addColumn(
+          database, 'temperature_logs', 'sensor_id', 'INTEGER');
+      await _addColumn(database, 'temperature_logs', 'sensor_label', 'TEXT');
+      await _addColumn(
+          database, 'temperature_logs', 'sensor_offset', 'REAL');
+      await _addColumn(
+        database,
+        'temperature_logs',
+        'sensor_reading_at',
+        'TEXT',
+      );
+      await _addColumn(database, 'temperature_logs', 'sensor_raw', 'REAL');
+    }
+
+    // Storico raw dei sensori (facoltativo, schermata andamento): salvato
+    // solo a app aperta, max 1 ogni 5 min o se Δ >= 0,2 °C.
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS sensor_readings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sensor_id INTEGER NOT NULL,
+        ts INTEGER NOT NULL,
+        temp REAL NOT NULL,
+        humidity REAL,
+        rssi INTEGER,
+        FOREIGN KEY(sensor_id) REFERENCES sensors(id)
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sensor_readings_sensor_ts '
+      'ON sensor_readings(sensor_id, ts)',
+    );
+  }
+
+  Future<void> _migrateV4toV5(Database database) async {
+    await _createV5Tables(database);
   }
 
   Future<void> _createV4Tables(Database database) async {
@@ -819,6 +921,14 @@ class AppDatabase {
     if (l.contains('semestr')) return 'semiannual';
     if (l.contains('annual')) return 'annual';
     return 'as_needed';
+  }
+
+  Future<bool> _tableExists(Database database, String table) async {
+    final rows = await database.rawQuery(
+      'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+      ['table', table],
+    );
+    return rows.isNotEmpty;
   }
 
   Future<void> _addColumn(

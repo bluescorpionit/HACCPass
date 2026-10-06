@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../repositories/haccp_repository.dart';
@@ -13,6 +14,7 @@ import 'guide_screen.dart';
 import 'license_screen.dart';
 import 'modules/extra_screens.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'sensors/sensor_diagnostics_screen.dart';
 import 'staff/staff_screen.dart';
 import 'temperature/equipment_editor.dart';
 
@@ -132,10 +134,18 @@ class MoreScreen extends StatelessWidget {
         Icons.key_outlined,
         () => _push(context, LicenseScreen(license: license)),
       ),
+      // FASE 0 sensori Govee: voce visibile SOLO nelle build di debug.
+      if (kDebugMode)
+        (
+          'Diagnostica sensori (debug)',
+          'Scansione BLE e byte grezzi Govee H5179',
+          Icons.sensors,
+          () => _push(context, const SensorDiagnosticsScreen()),
+        ),
     ];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      padding: screenPadding(context, hasBottomBar: true),
       children: [
         PageHeader(
           title: 'Altro',

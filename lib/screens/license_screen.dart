@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../services/license_service.dart';
+import '../widgets/common_widgets.dart' show screenPadding;
 
 /// Paywall: prova, acquisti in-app e chiave di licenza offline.
 class LicenseScreen extends StatefulWidget {
@@ -36,7 +37,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
         return Scaffold(
           appBar: AppBar(title: const Text('Licenza HACCPass')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        padding: screenPadding(context, horizontal: 24),
         children: [
           // Logo dell'app: in tema scuro resta in contenitore chiaro.
           Center(

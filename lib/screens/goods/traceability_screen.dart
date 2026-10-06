@@ -32,7 +32,7 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Rintracciabilit\u00E0')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: screenPadding(context),
         children: [
           TextField(
             controller: controller,
@@ -129,6 +129,8 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (sheetContext) {
         return ListView(

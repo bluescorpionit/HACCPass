@@ -47,7 +47,13 @@ class LotsScreen extends StatelessWidget {
             label: const Text('Nuovo lotto'),
           ),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
+            padding: screenPadding(
+              context,
+              top: 16,
+              bottom: 8,
+              hasBottomBar: true,
+              hasFab: true,
+            ),
             children: [
               PageHeader(
                 title: 'Lotti e produzione',

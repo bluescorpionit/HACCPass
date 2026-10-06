@@ -241,7 +241,33 @@ flutter test
 Coprono: stati pulizie, livelli infestanti, conformità temperature per
 categoria, termometri, codec licenza, **validazione P.IVA**, **modelli di
 attività e merge senza duplicati**, **cifratura backup** (roundtrip, password
-errata, salt/nonce).
+errata, salt/nonce) e **fix di layout** (`layout_fixes_test.dart`: Scaffold
+nelle schermate pushate, nessun overflow a 360×640 con scala 1.15, fogli
+modali sopra la barra di navigazione con inset simulati, azioni correttive
+integre a scala 1.3).
+
+## Layout edge-to-edge e QA
+
+L'app gira in edge-to-edge (Android 15): ogni schermata somma gli inset di
+sistema tramite `screenPadding()` (`common_widgets.dart`), nessuna
+schermata pushata resta senza Scaffold, i fogli modali tengono il pulsante
+Salva sopra tastiera e barra di navigazione, la scala tipografica è
+compatta (clamp 0.9–1.15). La checklist di verifica manuale su telefono
+reale (tema × font × navigazione × orientamento) è in
+[`docs/qa_layout.md`](docs/qa_layout.md).
+
+## Sensori Govee H5179 (sperimentale)
+
+Lettura automatica delle temperature dai termo-igrometri Govee H5179 via
+Bluetooth: stato e protocollo in [`docs/govee_h5179.md`](docs/govee_h5179.md).
+Ogni attrezzatura ha una "Sorgente temperatura": **Manuale** (default,
+comportamento invariato) o **Sensore** collegato dal foglio "Collega
+sensore" (scansione live, verifica con termometro ±1 °C, offset di
+calibrazione sempre visibile). I log e il PDF riportano la sorgente; il
+sensore non è mai presentato come strumento tarato. Architettura a
+modelli (`lib/core/sensors/`): nuovi modelli futuri = una classe + una
+riga nel registry. Funzione opzionale: l'app resta pienamente utilizzabile
+senza sensori e senza permessi Bluetooth.
 
 ## Prima della pubblicazione
 

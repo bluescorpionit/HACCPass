@@ -65,6 +65,7 @@ class _AppShellState extends State<AppShell> {
             repository: widget.repository,
             license: widget.license,
             initialTarget: 'cleaning',
+            standalone: true,
           ),
         ));
       case 'nc':
@@ -108,6 +109,7 @@ class _AppShellState extends State<AppShell> {
             repository: widget.repository,
             license: widget.license,
             initialTarget: 'receipts',
+            standalone: true,
           ),
         ));
       case 'lots':

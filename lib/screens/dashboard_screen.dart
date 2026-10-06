@@ -33,7 +33,7 @@ class DashboardScreen extends StatelessWidget {
             data.totalCount == 0 ? 100 : (data.doneCount * 100 / data.totalCount).round();
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          padding: screenPadding(context, hasBottomBar: true),
           children: [
             // Intestazione.
             Row(
@@ -237,6 +237,7 @@ class _HeroCard extends StatelessWidget {
         children: [
           ProgressRing(
             percent: percent,
+            size: 88,
             child: Text(
               '$percent%',
               style: theme.textTheme.titleLarge?.copyWith(
@@ -323,7 +324,7 @@ class _SetupCard extends StatelessWidget {
                   child: Text(
                     'Completa la configurazione: $progress%',
                     style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
                 TextButton(

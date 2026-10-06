@@ -34,6 +34,12 @@
 		<string>Salva le foto e i PDF dei registri nella tua libreria foto.</string>
 		<key>NSContactsUsageDescription</key>
 		<string>Importa i fornitori dai contatti del telefono: solo se lo scegli tu.</string>
+		<!-- Sensori di temperatura Govee (diagnostica e associazione):
+		     la scansione Bluetooth si attiva solo quando la apri tu. -->
+		<key>NSBluetoothAlwaysUsageDescription</key>
+		<string>Consenti la scansione Bluetooth per trovare e collegare i sensori di temperatura Govee delle tue attrezzature.</string>
+		<key>NSBluetoothPeripheralUsageDescription</key>
+		<string>Consenti la scansione Bluetooth per trovare e collegare i sensori di temperatura Govee delle tue attrezzature.</string>
 		<!-- Google Sign-In (solo archivio Drive, non accesso all'app):
 	     inserire il reversed client ID del progetto Google Cloud. -->
 		<!-- <key>CFBundleURLTypes</key>

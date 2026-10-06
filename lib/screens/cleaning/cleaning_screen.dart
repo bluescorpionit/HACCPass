@@ -259,16 +259,27 @@ class _TaskCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Titolo e badge non si comprimono a vicenda: il badge sta
+              // sotto il titolo, che puo' occupare fino a due righe.
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      task.title,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        StatusPill(text: pillText, type: pillType),
+                      ],
                     ),
                   ),
-                  StatusPill(text: pillText, type: pillType),
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     tooltip: 'Modifica',
@@ -297,24 +308,44 @@ class _TaskCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: state == CleaningState.done ? null : onDone,
-                      icon: const Icon(Icons.check),
-                      label: const Text('Fatto'),
+              // "Fatto" e "Problema": etichette su una riga (scaleDown, mai
+              // a capo dentro una parola); sotto 360 dp si impilano.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final done = FilledButton.icon(
+                    onPressed: state == CleaningState.done ? null : onDone,
+                    icon: const Icon(Icons.check),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Fatto', maxLines: 1),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onProblem,
-                      icon: const Icon(Icons.report_outlined),
-                      label: const Text('Problema'),
+                  );
+                  final problem = OutlinedButton.icon(
+                    onPressed: onProblem,
+                    icon: const Icon(Icons.report_outlined),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Problema', maxLines: 1),
                     ),
-                  ),
-                ],
+                  );
+                  if (constraints.maxWidth < 360) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        done,
+                        const SizedBox(height: 10),
+                        problem,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: done),
+                      const SizedBox(width: 10),
+                      Expanded(child: problem),
+                    ],
+                  );
+                },
               ),
             ],
           ),

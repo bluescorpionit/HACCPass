@@ -32,7 +32,7 @@ class StaffScreen extends StatelessWidget {
           final staff = data.$1;
           final renewalMonths = data.$2;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+            padding: screenPadding(context, top: 8, bottom: 96),
             children: [
               PageHeader(
                 title: 'Personale',

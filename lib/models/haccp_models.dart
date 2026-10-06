@@ -16,6 +16,8 @@ extension RowX on Map<String, Object?> {
   int integer(String key, [int fallback = 0]) =>
       (this[key] as num?)?.toInt() ?? fallback;
 
+  int? intOrNull(String key) => (this[key] as num?)?.toInt();
+
   bool flag(String key) => integer(key) == 1;
 
   DateTime? dt(String key) {
@@ -114,6 +116,8 @@ class Equipment {
     this.notes = '',
     this.thermoVerifiedAt,
     this.active = true,
+    this.tempSource = 'manual',
+    this.sensorId,
   });
 
   final int id;
@@ -126,6 +130,16 @@ class Equipment {
   final DateTime? thermoVerifiedAt;
   final bool active;
 
+  /// Sorgente della temperatura: 'manual' (default, comportamento storico)
+  /// oppure 'sensor' (attrezzatura collegata a un sensore).
+  final String tempSource;
+
+  /// Sensore collegato (null se manuale): un sensore appartiene a UNA sola
+  /// attrezzatura (indice univoco parziale nel DB).
+  final int? sensorId;
+
+  bool get usesSensor => tempSource == 'sensor' && sensorId != null;
+
   bool isCompliant(double t) => t >= minTemp && t <= maxTemp;
 
   String get rangeLabel =>
@@ -137,6 +151,9 @@ class Equipment {
     return DateTime.now().difference(v).inDays > thermometerCheckIntervalDays;
   }
 
+  /// NOTA: temp_source/sensor_id NON sono inclusi volutamente: il salvataggio
+  /// dell'anagrafica non deve sovrascrivere il collegamento del sensore
+  /// (si gestisce con linkSensor/unlinkSensor).
   Map<String, Object?> toMap() => {
         'name': name,
         'type': type,
@@ -157,6 +174,82 @@ class Equipment {
         notes: map.str('notes'),
         thermoVerifiedAt: map.dt('thermo_verified_at'),
         active: map.flag('active'),
+        tempSource: map.str('temp_source', 'manual'),
+        sensorId: map.intOrNull('sensor_id'),
+      );
+}
+
+/// Sensore collegato a un'attrezzatura (oggi Govee H5179; in futuro altri
+/// modelli tramite il catalogo in `lib/core/sensors/`).
+class Sensor {
+  const Sensor({
+    required this.id,
+    required this.modelId,
+    required this.deviceKey,
+    required this.createdAt,
+    this.systemId,
+    this.label,
+    this.lastTemp,
+    this.lastHumidity,
+    this.lastSeen,
+    this.battery,
+    this.enabled = true,
+    this.calibrationOffset = 0,
+    this.lastVerifiedAt,
+  });
+
+  final int id;
+
+  /// Modello ('govee_h5179'): vede il catalogo `sensorRegistry`.
+  final String modelId;
+
+  /// Chiave stabile del sensore: suffisso normalizzato del nome
+  /// pubblicizzato (es. `AB12`); su iOS l'ID BLE cambia per telefono.
+  final String deviceKey;
+  final String? systemId;
+  final String? label;
+  final double? lastTemp;
+  final double? lastHumidity;
+  final DateTime? lastSeen;
+  final int? battery;
+  final bool enabled;
+
+  /// Offset di calibrazione in °C (−3…+3, passo 0,1): SEMPRE visibile e
+  /// registrato insieme al dato (sensor_raw + sensor_offset nel log).
+  final double calibrationOffset;
+
+  /// Ultima verifica con termometro di riferimento (tolleranza ±1 °C).
+  final DateTime? lastVerifiedAt;
+
+  final DateTime createdAt;
+
+  /// Etichetta utente o, in assenza, la chiave del dispositivo.
+  String get displayName =>
+      (label == null || label!.trim().isEmpty) ? deviceKey : label!.trim();
+
+  /// true se la verifica con termometro è assente o scaduta (stessa cadenza
+  /// della verifica termometri).
+  bool get verificationOverdue {
+    final v = lastVerifiedAt;
+    if (v == null) return true;
+    return DateTime.now().difference(v).inDays >
+        thermometerCheckIntervalDays;
+  }
+
+  factory Sensor.fromMap(Map<String, Object?> map) => Sensor(
+        id: map.integer('id'),
+        modelId: map.str('model_id'),
+        deviceKey: map.str('device_key'),
+        systemId: map.strOrNull('system_id'),
+        label: map.strOrNull('label'),
+        lastTemp: map.dbl('last_temp'),
+        lastHumidity: map.dbl('last_humidity'),
+        lastSeen: map.dt('last_seen'),
+        battery: map.intOrNull('battery'),
+        enabled: map.flag('enabled'),
+        calibrationOffset: map.dbl('calibration_offset') ?? 0,
+        createdAt: map.dtOr('created_at', DateTime.now()),
+        lastVerifiedAt: map.dt('last_verified_at'),
       );
 }
 
@@ -173,6 +266,12 @@ class TemperatureLog {
     this.equipmentName,
     this.minTemp,
     this.maxTemp,
+    this.source = 'manual',
+    this.sensorId,
+    this.sensorLabel,
+    this.sensorOffset,
+    this.sensorRaw,
+    this.sensorReadingAt,
   });
 
   final int id;
@@ -187,6 +286,25 @@ class TemperatureLog {
   final double? minTemp;
   final double? maxTemp;
 
+  /// 'manual' (operatore) o 'sensor' (acquisita dal sensore e confermata).
+  final String source;
+  final int? sensorId;
+
+  /// Istantanea del sensore al momento del salvataggio: etichetta e offset
+  /// restano nel log anche se il sensore viene eliminato.
+  final String? sensorLabel;
+  final double? sensorOffset;
+
+  /// Valore grezzo del sensore PRIMA dell'offset di calibrazione.
+  final double? sensorRaw;
+  final DateTime? sensorReadingAt;
+
+  bool get fromSensor => source == 'sensor';
+
+  /// Etichetta della sorgente per PDF e liste.
+  String get sourceLabel =>
+      fromSensor ? 'Sensore ${sensorLabel ?? ''}'.trim() : 'Manuale';
+
   factory TemperatureLog.fromMap(Map<String, Object?> map) => TemperatureLog(
         id: map.integer('id'),
         equipmentId: map.integer('equipment_id'),
@@ -199,6 +317,12 @@ class TemperatureLog {
         equipmentName: map.strOrNull('equipment_name'),
         minTemp: map.dbl('min_temp'),
         maxTemp: map.dbl('max_temp'),
+        source: map.str('source', 'manual'),
+        sensorId: map.intOrNull('sensor_id'),
+        sensorLabel: map.strOrNull('sensor_label'),
+        sensorOffset: map.dbl('sensor_offset'),
+        sensorRaw: map.dbl('sensor_raw'),
+        sensorReadingAt: map.dt('sensor_reading_at'),
       );
 }
 

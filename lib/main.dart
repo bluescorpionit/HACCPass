@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/database/app_database.dart';
+import 'core/sensors/ble_sensor_source.dart';
 import 'core/theme/app_theme.dart';
 import 'repositories/haccp_repository.dart';
 import 'screens/app_shell.dart';
@@ -138,12 +141,27 @@ class HaccpassApp extends StatelessWidget {
       supportedLocales: const [Locale('it', 'IT')],
       locale: const Locale('it', 'IT'),
       builder: (context, child) {
-        // Rispetta il ridimensionamento del testo di sistema,
-        // limitandolo tra 0.9 e 1.3 per evitare overflow.
-        return MediaQuery.withClampedTextScaling(
-          minScaleFactor: 0.9,
-          maxScaleFactor: 1.3,
-          child: child!,
+        // Barre di sistema coerenti col tema (edge-to-edge): icone scure su
+        // sfondo chiaro e viceversa, barre trasparenti.
+        final brightness = Theme.of(context).brightness;
+        final dark = brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness:
+                dark ? Brightness.light : Brightness.dark,
+            systemNavigationBarContrastEnforced: false,
+          ),
+          // Rispetta il ridimensionamento del testo di sistema,
+          // limitandolo tra 0.9 e 1.15 per evitare rotture di layout.
+          child: MediaQuery.withClampedTextScaling(
+            minScaleFactor: 0.9,
+            maxScaleFactor: 1.15,
+            child: child!,
+          ),
         );
       },
       home: FutureBuilder<AppServices>(
@@ -302,6 +320,11 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Sensori (Prompt 7): le letture BLE passano al repository, che salva
+    // lo storico con throttling e retention. Nessuna scansione parte qui.
+    SensorService.instance.attachSink(
+      (sample) => unawaited(widget.repository.handleSensorReading(sample)),
+    );
     _bootstrap();
   }
 

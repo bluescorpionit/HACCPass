@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../core/constants/haccp_rules.dart';
 import '../core/database/app_database.dart';
+import '../core/sensors/sensor_source.dart';
 import '../core/utils/format.dart';
 import '../models/haccp_models.dart';
 
@@ -173,6 +174,12 @@ class HaccpRepository {
     required String operatorName,
     String? note,
     String? correctiveAction,
+    String source = 'manual',
+    int? sensorId,
+    String? sensorLabel,
+    double? sensorOffset,
+    double? sensorRaw,
+    DateTime? sensorReadingAt,
   }) async {
     final compliant = equipment.isCompliant(temperature);
     final now = DateTime.now();
@@ -186,6 +193,12 @@ class HaccpRepository {
         'compliant': compliant ? 1 : 0,
         'note': note,
         'corrective_action': correctiveAction,
+        'source': source,
+        'sensor_id': sensorId,
+        'sensor_label': sensorLabel,
+        'sensor_offset': sensorOffset,
+        'sensor_reading_at': sensorReadingAt?.toIso8601String(),
+        'sensor_raw': sensorRaw,
       });
 
       int? ncId;
@@ -261,6 +274,249 @@ class HaccpRepository {
       [equipmentId, start.toIso8601String()],
     );
     return rows.map(TemperatureLog.fromMap).toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sensori di temperatura (Prompt 7)
+  // ---------------------------------------------------------------------------
+
+  /// Tutti i sensori registrati.
+  Future<List<Sensor>> getSensors() async {
+    final rows = await _db.query('sensors', orderBy: 'device_key');
+    return rows.map(Sensor.fromMap).toList();
+  }
+
+  /// Mappa device_key → nome attrezzatura che usa il sensore (per il tag
+  /// "Gi\u00E0 usato per:" nel foglio di collegamento).
+  Future<Map<String, String>> getSensorUsage() async {
+    final rows = await _db.rawQuery('''
+      SELECT s.device_key AS key, e.name AS name
+      FROM sensors s
+      JOIN equipment e ON e.sensor_id = s.id AND e.temp_source = 'sensor'
+    ''');
+    return {
+      for (final row in rows) row['key']! as String: row['name']! as String,
+    };
+  }
+
+  /// Attrezzature attive con l'eventuale sensore collegato.
+  Future<List<(Equipment, Sensor?)>> getEquipmentWithSensors() async {
+    final rows = await _db.rawQuery('''
+      SELECT e.*,
+             s.id AS s_id, s.model_id AS s_model_id,
+             s.device_key AS s_device_key, s.system_id AS s_system_id,
+             s.label AS s_label, s.last_temp AS s_last_temp,
+             s.last_humidity AS s_last_humidity, s.last_seen AS s_last_seen,
+             s.battery AS s_battery, s.enabled AS s_enabled,
+             s.calibration_offset AS s_calibration_offset,
+             s.created_at AS s_created_at,
+             s.last_verified_at AS s_last_verified_at
+      FROM equipment e
+      LEFT JOIN sensors s ON s.id = e.sensor_id
+      WHERE e.active = 1
+      ORDER BY e.name
+    ''');
+    return [
+      for (final row in rows)
+        (
+          Equipment.fromMap(row),
+          row['s_id'] == null
+              ? null
+              : Sensor(
+                  id: row.integer('s_id'),
+                  modelId: row.str('s_model_id'),
+                  deviceKey: row.str('s_device_key'),
+                  systemId: row.strOrNull('s_system_id'),
+                  label: row.strOrNull('s_label'),
+                  lastTemp: row.dbl('s_last_temp'),
+                  lastHumidity: row.dbl('s_last_humidity'),
+                  lastSeen: row.dt('s_last_seen'),
+                  battery: row.intOrNull('s_battery'),
+                  enabled: row.flag('s_enabled'),
+                  calibrationOffset: row.dbl('s_calibration_offset') ?? 0,
+                  createdAt: row.dtOr('s_created_at', DateTime.now()),
+                  lastVerifiedAt: row.dt('s_last_verified_at'),
+                ),
+        ),
+    ];
+  }
+
+  /// Collega (o sposta, dopo conferma UI) un sensore a un'attrezzatura.
+  /// Il vincolo un sensore ↔ una sola attrezzatura è garantito dall'indice
+  /// univoco parziale: l'eventuale precedente associazione viene rimossa.
+  Future<int> linkSensor({
+    required int equipmentId,
+    required String modelId,
+    required String deviceKey,
+    String? systemId,
+    String? label,
+  }) async {
+    return _write(() async {
+      final existing = await _db.query(
+        'sensors',
+        where: 'device_key = ?',
+        whereArgs: [deviceKey],
+        limit: 1,
+      );
+      int sensorId;
+      if (existing.isEmpty) {
+        sensorId = await _db.insert('sensors', {
+          'model_id': modelId,
+          'device_key': deviceKey,
+          'system_id': systemId,
+          'label': label,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } else {
+        sensorId = existing.first['id']! as int;
+        final updates = <String, Object?>{
+          if (systemId != null) 'system_id': systemId,
+          if (label != null && label.trim().isNotEmpty) 'label': label.trim(),
+        };
+        if (updates.isNotEmpty) {
+          await _db.update(
+            'sensors',
+            updates,
+            where: 'id = ?',
+            whereArgs: [sensorId],
+          );
+        }
+      }
+      // Sgancia il sensore da qualsiasi altra attrezzatura.
+      await _db.update(
+        'equipment',
+        {'temp_source': 'manual', 'sensor_id': null},
+        where: 'sensor_id = ? AND id != ?',
+        whereArgs: [sensorId, equipmentId],
+      );
+      await _db.update(
+        'equipment',
+        {'temp_source': 'sensor', 'sensor_id': sensorId},
+        where: 'id = ?',
+        whereArgs: [equipmentId],
+      );
+      return sensorId;
+    });
+  }
+
+  /// Riporta l'attrezzatura a Manuale: le letture passate restano.
+  Future<void> unlinkSensorFromEquipment(int equipmentId) async {
+    await _write(() async {
+      await _db.update(
+        'equipment',
+        {'temp_source': 'manual', 'sensor_id': null},
+        where: 'id = ?',
+        whereArgs: [equipmentId],
+      );
+    });
+  }
+
+  /// Offset di calibrazione del sensore (−3…+3 °C, passo 0,1): sempre
+  /// visibile e annotato dove applicato.
+  Future<void> setSensorCalibration(int sensorId, double offsetC) async {
+    final clamped = (offsetC.clamp(-3.0, 3.0) * 10).roundToDouble() / 10;
+    await _write(() async {
+      await _db.update('sensors', {'calibration_offset': clamped},
+          where: 'id = ?', whereArgs: [sensorId]);
+    });
+  }
+
+  Future<void> setSensorLabel(int sensorId, String label) async {
+    await _write(() async {
+      await _db.update('sensors', {'label': label.trim()},
+          where: 'id = ?', whereArgs: [sensorId]);
+    });
+  }
+
+  /// Registra l'esito della verifica con termometro di riferimento.
+  Future<void> setSensorVerified(int sensorId, DateTime at) async {
+    await _write(() async {
+      await _db.update('sensors', {'last_verified_at': at.toIso8601String()},
+          where: 'id = ?', whereArgs: [sensorId]);
+    });
+  }
+
+  /// Elimina un sensore: i log già registrati RESTANO (source='sensor' e
+  /// riferimento storico in sensor_key/sensor_label); l'attrezzatura torna
+  /// Manuale.
+  Future<void> deleteSensor(int sensorId) async {
+    await _write(() async {
+      await _db.update(
+        'equipment',
+        {'temp_source': 'manual', 'sensor_id': null},
+        where: 'sensor_id = ?',
+        whereArgs: [sensorId],
+      );
+      await _db
+          .delete('sensors', where: 'id = ?', whereArgs: [sensorId]);
+    });
+  }
+
+  /// Ultima lettura per sensore salvata in `sensor_readings` (throttling).
+  final _lastPersistedReading = <int, ({DateTime ts, double temp})>{};
+
+  /// Riceve le letture dal SensorService (solo sensori registrati):
+  /// aggiorna lo stato sul record `sensors` e salva lo storico con le
+  /// regole "max 1 ogni 5 min, oppure se Δ >= 0,2 °C, comunque ogni 15 min"
+  /// (retention 90 giorni in `_onOpen`).
+  Future<void> handleSensorReading(SensorSample sample) async {
+    final rows = await _db.query(
+      'sensors',
+      columns: ['id', 'enabled'],
+      where: 'device_key = ?',
+      whereArgs: [sample.sensorId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final sensorId = rows.first['id']! as int;
+    if (rows.first['enabled'] != 1) return;
+
+    final last = _lastPersistedReading[sensorId];
+    final shouldPersist = last == null ||
+        sample.timestamp.difference(last.ts) >= const Duration(minutes: 15) ||
+        (sample.timestamp.difference(last.ts) >= const Duration(minutes: 5) &&
+            (sample.tempC - last.temp).abs() >= 0.2);
+
+    await _write(() async {
+      await _db.update(
+        'sensors',
+        {
+          'last_temp': sample.tempC,
+          'last_humidity': sample.humidity,
+          'last_seen': sample.timestamp.toIso8601String(),
+          if (sample.batteryPercent != null) 'battery': sample.batteryPercent,
+        },
+        where: 'id = ?',
+        whereArgs: [sensorId],
+      );
+      if (shouldPersist) {
+        await _db.insert('sensor_readings', {
+          'sensor_id': sensorId,
+          'ts': sample.timestamp.millisecondsSinceEpoch,
+          'temp': sample.tempC,
+          'humidity': sample.humidity,
+          'rssi': sample.rssi,
+        });
+        _lastPersistedReading[sensorId] =
+            (ts: sample.timestamp, temp: sample.tempC);
+      }
+    });
+  }
+
+  /// Sensori collegati ma senza dati recenti (per "Da fare ora").
+  Future<int> getUnreachableSensorCount({
+    Duration staleAfter = const Duration(minutes: 10),
+  }) async {
+    final cutoff =
+        DateTime.now().subtract(staleAfter).toIso8601String();
+    final rows = await _db.rawQuery('''
+      SELECT COUNT(*) AS n
+      FROM sensors s
+      JOIN equipment e ON e.sensor_id = s.id
+      WHERE e.temp_source = 'sensor' AND s.enabled = 1
+        AND (s.last_seen IS NULL OR s.last_seen < ?)
+    ''', [cutoff]);
+    return rows.first['n']! as int;
   }
 
   /// Attrezzature senza letture oggi (controllo visivo giornaliero minimo).
@@ -1030,6 +1286,21 @@ class HaccpRepository {
       ));
     }
 
+    // Warning: sensori collegati ma senza dati recenti (batterie, portata,
+    // Bluetooth spento). Mai dati inventati per coprire i buchi.
+    final unreachableSensors = await getUnreachableSensorCount();
+    if (unreachableSensors > 0) {
+      todos.add(TodoItem(
+        severity: 1,
+        icon: 'thermostat',
+        title: unreachableSensors == 1
+            ? 'Un sensore non raggiungibile'
+            : '$unreachableSensors sensori non raggiungibili',
+        subtitle: 'Ultimo dato troppo vecchio: controlla batterie e portata',
+        target: 'temperature',
+      ));
+    }
+
     final tasks = await getCleaningTasks();
     final dueCleanings =
         tasks.where((t) => t.state == CleaningState.dueToday).length;
@@ -1442,18 +1713,54 @@ class HaccpRepository {
 
   /// Sostituisce le righe create dal wizard per una tabella, senza toccare
   /// quelle create o modificate a mano (`source = 'user'`).
+  ///
+  /// Se una riga `wizard` è già referenziata da registri storici (foreign key),
+  /// non può essere eliminata: in quel caso la "sganciamo" dal wizard
+  /// convertendola a `source = 'user'` e ricostruiamo solo le altre.
   Future<void> _replaceWizardRows(
     String table,
     List<Map<String, Object?>> rows,
   ) async {
     await _write(() async {
       await _db.transaction((txn) async {
+        final references = _wizardReferencePredicates(table);
+        if (references.isNotEmpty) {
+          final linkedWhere = references.join(' OR ');
+          await txn.rawUpdate(
+            "UPDATE $table SET source = 'user' "
+            "WHERE source = 'wizard' AND ($linkedWhere)",
+          );
+        }
         await txn.delete(table, where: "source = 'wizard'");
         for (final row in rows) {
           await txn.insert(table, {...row, 'source': 'wizard'});
         }
       });
     });
+  }
+
+  List<String> _wizardReferencePredicates(String table) {
+    switch (table) {
+      case 'equipment':
+        return const [
+          'EXISTS (SELECT 1 FROM temperature_logs t WHERE t.equipment_id = equipment.id)',
+          'EXISTS (SELECT 1 FROM thermometer_checks t WHERE t.equipment_id = equipment.id)',
+        ];
+      case 'cleaning_tasks':
+        return const [
+          'EXISTS (SELECT 1 FROM cleaning_logs c WHERE c.task_id = cleaning_tasks.id)',
+        ];
+      case 'products':
+        return const [
+          'EXISTS (SELECT 1 FROM lots l WHERE l.product_id = products.id)',
+        ];
+      case 'pest_stations':
+        return const [
+          'EXISTS (SELECT 1 FROM pest_logs p WHERE p.station_id = pest_stations.id)',
+        ];
+      default:
+        return const [];
+    }
   }
 
   Future<void> applyWizardEquipment(
@@ -1463,7 +1770,8 @@ class HaccpRepository {
       String type,
       double minTemp,
       double maxTemp,
-      String location
+      String location,
+      String tempSource
     })> equipmentList,
   ) async {
     await _replaceWizardRows('equipment', [
@@ -1478,6 +1786,7 @@ class HaccpRepository {
           'thermo_verified_at': null,
           'active': 1,
           'template_key': e.key,
+          'temp_source': e.tempSource,
         },
     ]);
   }

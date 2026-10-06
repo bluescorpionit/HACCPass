@@ -25,7 +25,7 @@ class SuppliersScreen extends StatelessWidget {
         loader: repository.getSuppliers,
         builder: (context, suppliers) {
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+            padding: screenPadding(context, top: 8, bottom: 96),
             children: [
               if (suppliers.isEmpty)
                 EmptyState(

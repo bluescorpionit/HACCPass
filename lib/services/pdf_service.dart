@@ -546,6 +546,7 @@ class PdfService {
 
   Future<List<pw.Widget>> _temperatureSection(DateTime from, DateTime to) async {
     final logs = await repository.getTemperatureLogs(from: from, to: to);
+    final anyOffset = logs.any((l) => l.fromSensor && (l.sensorOffset ?? 0) != 0);
     return [
       _sectionTitle('Registro temperature'),
       if (logs.isEmpty)
@@ -554,9 +555,9 @@ class PdfService {
         _table(
           headers: const [
             'Data e ora', 'Attrezzatura', 'Temp. \u00B0C', 'Esito',
-            'Azioni correttive', 'Operatore',
+            'Sorgente', 'Azioni correttive', 'Operatore',
           ],
-          columnWidths: const [3, 3.5, 2, 2, 4.5, 2.5],
+          columnWidths: const [3, 3.2, 1.8, 2, 2.8, 3.7, 2.5],
           rows: [
             for (final l in logs)
               [
@@ -564,11 +565,25 @@ class PdfService {
                 l.equipmentName ?? '',
                 l.temperature.toStringAsFixed(1),
                 l.compliant ? 'Conforme' : 'Fuori limite',
+                l.sourceLabel,
                 l.correctiveAction ?? l.note ?? '',
                 l.operatorName,
               ],
           ],
         ),
+      // Legenda sorgente: i sensori sono dispositivi di ausilio, MAI
+      // presentati come strumenti tarati/certificati.
+      pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 6),
+        child: pw.Text(
+          'Sorgente \u2014 Manuale: inserita dall\u2019operatore. Sensore: '
+          'acquisita da un termo-igrometro Govee H5179 e confermata '
+          'dall\u2019operatore; il sensore \u00E8 un dispositivo di ausilio, '
+          'non uno strumento tarato o certificato (EN 12830).'
+          '${anyOffset ? ' Ai dati dei sensori \u00E8 stato applicato un offset di calibrazione, sempre indicato insieme alle letture.' : ''}',
+          style: pw.TextStyle(fontSize: 8.5, color: _muted),
+        ),
+      ),
     ];
   }
 

@@ -216,12 +216,33 @@ class AppTheme {
   }) {
     final baseText = ThemeData(brightness: brightness, fontFamily: 'Poppins');
 
+    // Scala tipografica compatta: Poppins e' un font largo e i testi M3 di
+    // default causano a capo/overflow su 360 dp. Ridotti di ~10% (mai sotto
+    // 11 sp) per display/headline/title/body/label.
+    final scaledText = baseText.textTheme.copyWith(
+      displayLarge: baseText.textTheme.displayLarge?.copyWith(fontSize: 28),
+      displayMedium: baseText.textTheme.displayMedium?.copyWith(fontSize: 26),
+      displaySmall: baseText.textTheme.displaySmall?.copyWith(fontSize: 24),
+      headlineLarge: baseText.textTheme.headlineLarge?.copyWith(fontSize: 24),
+      headlineMedium: baseText.textTheme.headlineMedium?.copyWith(fontSize: 22),
+      headlineSmall: baseText.textTheme.headlineSmall?.copyWith(fontSize: 20),
+      titleLarge: baseText.textTheme.titleLarge?.copyWith(fontSize: 18),
+      titleMedium: baseText.textTheme.titleMedium?.copyWith(fontSize: 15),
+      titleSmall: baseText.textTheme.titleSmall?.copyWith(fontSize: 14),
+      bodyLarge: baseText.textTheme.bodyLarge?.copyWith(fontSize: 15),
+      bodyMedium: baseText.textTheme.bodyMedium?.copyWith(fontSize: 14),
+      bodySmall: baseText.textTheme.bodySmall?.copyWith(fontSize: 12),
+      labelLarge: baseText.textTheme.labelLarge?.copyWith(fontSize: 14),
+      labelMedium: baseText.textTheme.labelMedium?.copyWith(fontSize: 12),
+      labelSmall: baseText.textTheme.labelSmall?.copyWith(fontSize: 11),
+    );
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: background,
       fontFamily: 'Poppins',
-      textTheme: baseText.textTheme.apply(
+      textTheme: scaledText.apply(
         bodyColor: scheme.onSurface,
         displayColor: scheme.onSurface,
       ),
@@ -282,7 +303,7 @@ class AppTheme {
           minimumSize: const Size(64, 54),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: const TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w700,
             fontFamily: 'Poppins',
           ),
@@ -297,7 +318,7 @@ class AppTheme {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           foregroundColor: scheme.primary,
           textStyle: const TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w700,
             fontFamily: 'Poppins',
           ),

@@ -36,6 +36,13 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
+  /// Le operazioni DB passano dall'isolate di sqflite_ffi: le loro future
+  /// consegnano solo sul loop di eventi reale, non nel FakeAsync del widget
+  /// test. Questo flush le completa prima delle asserzioni.
+  Future<void> flushDb(WidgetTester tester) => tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+
   Future<void> pumpWizard(WidgetTester tester) async {
     final license = LicenseService(
       readSetting: (key) async {
@@ -61,6 +68,8 @@ void main() {
     );
     // Durata fissa: pumpAndSettle pu\u00F2 non terminare per animazioni
     // ripetute dell'indicatore in ambiente test.
+    await tester.pump();
+    await flushDb(tester);
     await tester.pump(const Duration(milliseconds: 300));
   }
 
@@ -73,14 +82,19 @@ void main() {
         reason: 'Avanti deve essere disabilitato prima del consenso');
 
     await tester.tap(find.byType(CheckboxListTile));
+    await flushDb(tester);
     await tester.pump(const Duration(milliseconds: 300));
 
     button = tester.widget<FilledButton>(find.byType(FilledButton));
     expect(button.onPressed, isNotNull,
         reason: 'la spunta dei termini deve abilitare Avanti');
 
-    // Il consenso viene persistito.
-    expect(await repository.getSetting('terms_accepted_at'), isNotEmpty);
+    // Il consenso viene persistito (lettura DB sul loop reale: vedi
+    // flushDb).
+    final terms = await tester.runAsync(
+      () => repository.getSetting('terms_accepted_at'),
+    );
+    expect(terms, isNotEmpty);
   });
 
   testWidgets('senza tipo di attivit\u00E0 il passo 1 resta bloccato',
@@ -89,8 +103,11 @@ void main() {
 
     // Accetta i termini e avanza al passo 1.
     await tester.tap(find.byType(CheckboxListTile));
+    await flushDb(tester);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byType(FilledButton));
+    // next() persiste il passo su DB: flush prima di aspettare la pagina.
+    await flushDb(tester);
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // La pagina del passo 1 \u00E8 effettivamente costruita.

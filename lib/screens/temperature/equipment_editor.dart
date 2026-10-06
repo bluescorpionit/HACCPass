@@ -4,6 +4,7 @@ import '../../core/constants/haccp_rules.dart';
 import '../../models/haccp_models.dart';
 import '../../repositories/haccp_repository.dart';
 import '../../widgets/common_widgets.dart';
+import '../sensors/link_sensor_sheet.dart';
 import 'equipment_history_sheet.dart';
 
 /// CRUD attrezzature con preset di temperatura.
@@ -21,7 +22,7 @@ class EquipmentEditor extends StatelessWidget {
         loader: repository.getAllEquipment,
         builder: (context, items) {
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: screenPadding(context, top: 8),
             children: [
               for (final equipment in items.where((e) => e.active))
                 Padding(
@@ -34,9 +35,10 @@ class EquipmentEditor extends StatelessWidget {
                       ),
                       subtitle: Text(
                         '${equipment.type} \u2022 ${equipment.rangeLabel}'
-                        '${equipment.location.isEmpty ? '' : '\n${equipment.location}'}',
+                        '${equipment.location.isEmpty ? '' : '\n${equipment.location}'}'
+                        '${equipment.usesSensor ? '\nSorgente: Sensore (${equipment.sensorId != null ? 'ID ${equipment.sensorId}' : 'collega da Temperature'})' : ''}',
                       ),
-                      isThreeLine: equipment.location.isNotEmpty,
+                      isThreeLine: true,
                       trailing: PopupMenuButton<String>(
                         onSelected: (action) async {
                           switch (action) {
@@ -45,6 +47,39 @@ class EquipmentEditor extends StatelessWidget {
                             case 'history':
                               showEquipmentHistory(
                                   context, repository, equipment);
+                            case 'sensor':
+                              await showLinkSensorSheet(
+                                context,
+                                repository: repository,
+                                equipment: equipment,
+                              );
+                            case 'unlink':
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: const Text('Scollegare il sensore?'),
+                                  content: Text(
+                                    '${equipment.name} torna a sorgente '
+                                    'Manuale. Le letture passate restano.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(
+                                          dialogContext, false),
+                                      child: const Text('Annulla'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(
+                                          dialogContext, true),
+                                      child: const Text('Scollega'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true) {
+                                await repository
+                                    .unlinkSensorFromEquipment(equipment.id);
+                              }
                             case 'delete':
                               final confirmed = await _confirmDelete(
                                   context, equipment);
@@ -62,6 +97,14 @@ class EquipmentEditor extends StatelessWidget {
                           PopupMenuItem(
                             value: 'history',
                             child: Text('Storico e verifica termometro'),
+                          ),
+                          PopupMenuItem(
+                            value: 'sensor',
+                            child: Text('Collega / cambia sensore'),
+                          ),
+                          PopupMenuItem(
+                            value: 'unlink',
+                            child: Text('Scollega sensore'),
                           ),
                           PopupMenuItem(
                             value: 'delete',
@@ -207,6 +250,29 @@ class EquipmentEditor extends StatelessWidget {
                   child: TextField(
                     controller: notesController,
                     maxLines: 2,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Sorgente temperatura (Prompt 7): Manuale è il default.
+                // Il collegamento vero del sensore avviene dalla sezione
+                // Temperature (foglio "Collega sensore" con scansione).
+                LabeledField(
+                  label: 'Sorgente temperatura',
+                  child: Text(
+                    existing == null
+                        ? 'Manuale (default). Dopo il salvataggio puoi '
+                            'collegare un sensore Govee H5179 dalla sezione '
+                            'Temperature.'
+                        : existing.usesSensor
+                            ? 'Sensore collegato: gestisci (cambia, offset, '
+                                'verifica, scollega) dalla sezione '
+                                'Temperature o dal menu di questa attrezzatura.'
+                            : 'Manuale: l\u2019operatore inserisce il valore. '
+                                '"Collega / cambia sensore" nel menu per usare '
+                                'un Govee H5179.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
                 ),
               ],

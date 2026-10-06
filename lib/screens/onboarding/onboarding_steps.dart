@@ -525,6 +525,42 @@ class _EquipmentStepState extends State<EquipmentStep> {
                 ),
               ),
             ),
+          const SizedBox(height: 12),
+          // Sorgente temperatura delle attrezzature (Prompt 7): il
+          // collegamento vero del sensore avviene in Temperature.
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sorgente temperatura delle nuove attrezzature',
+                    style:
+                        const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Manuale (consigliato): l\u2019operatore inserisce il '
+                    'valore. Sensore: puoi collegare un Govee H5179 dopo, '
+                    'dalla sezione Temperature.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  ChoiceRow<bool>(
+                    options: const [
+                      (false, 'Manuale'),
+                      (true, 'Sensore (collego dopo)'),
+                    ],
+                    selected: controller.equipmentUseSensor,
+                    onSelected: (v) => setState(() {
+                      controller.equipmentUseSensor = v;
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Nomi e posizioni si affinano al volo: dopo la creazione '

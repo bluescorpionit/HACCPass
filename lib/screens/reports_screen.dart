@@ -150,7 +150,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          padding: screenPadding(context, hasBottomBar: true),
           children: [
             PageHeader(
               title: 'Report',

@@ -17,17 +17,24 @@ import 'modules/modules_screens.dart';
 import 'modules/extra_screens.dart';
 
 /// Hub dei controlli: ogni registro con il proprio badge di stato.
+///
+/// Come tab della shell resta senza AppBar; aperta via `Navigator.push`
+/// ([standalone] = true) si avvolge in un [FeatureScaffold]: nessuna
+/// schermata pushata puo' restituire contenuti senza Scaffold (sfondo
+/// nero, testi illeggibili).
 class ChecksHubScreen extends StatefulWidget {
   const ChecksHubScreen({
     super.key,
     required this.repository,
     required this.license,
     this.initialTarget,
+    this.standalone = false,
   });
 
   final HaccpRepository repository;
   final LicenseService license;
   final String? initialTarget;
+  final bool standalone;
 
   @override
   State<ChecksHubScreen> createState() => _ChecksHubScreenState();
@@ -99,19 +106,20 @@ class _ChecksHubScreenState extends State<ChecksHubScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return LiveQuery<Map<String, int>>(
+    final content = LiveQuery<Map<String, int>>(
       repository: widget.repository,
       loader: _loadBadges,
       builder: (context, badges) {
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          padding: screenPadding(context, hasBottomBar: !widget.standalone),
           children: [
-            PageHeader(
-              title: 'Controlli',
-              subtitle:
-                  'Tutti i registri HACCP: tocca una voce per registrare o '
-                  'consultare.',
-            ),
+            if (!widget.standalone)
+              PageHeader(
+                title: 'Controlli',
+                subtitle:
+                    'Tutti i registri HACCP: tocca una voce per registrare o '
+                    'consultare.',
+              ),
             ...[
               ('temperature', 'Temperature', Icons.thermostat,
                   'Attrezzature e letture del giorno', 'temperature'),
@@ -169,7 +177,7 @@ class _ChecksHubScreenState extends State<ChecksHubScreen> {
                                   Text(
                                     title,
                                     style: theme.textTheme.titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                        ?.copyWith(fontWeight: FontWeight.w600),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
@@ -206,6 +214,16 @@ class _ChecksHubScreenState extends State<ChecksHubScreen> {
         );
       },
     );
+
+    if (widget.standalone) {
+      return FeatureScaffold(
+        title: 'Controlli',
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        body: content,
+      );
+    }
+    return content;
   }
 
   Widget _link(String title, String subtitle, String target) {
@@ -218,7 +236,7 @@ class _ChecksHubScreenState extends State<ChecksHubScreen> {
           leading: Icon(Icons.chevron_right, color: theme.colorScheme.primary),
           title: Text(title,
               style:
-                  theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           subtitle: Text(subtitle),
         ),
       ),

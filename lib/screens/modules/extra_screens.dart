@@ -708,7 +708,7 @@ class _LimitsScreenState extends State<LimitsScreen> {
           };
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            padding: screenPadding(context),
             children: [
               Text(
                 'Limiti di riferimento (PR COT/ABB/TRA/CAMP): modificabili e '

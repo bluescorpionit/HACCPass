@@ -20,6 +20,8 @@ Future<void> showEquipmentHistory(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    // Il foglio non sale mai sotto la barra di stato.
+    useSafeArea: true,
     showDragHandle: true,
     builder: (sheetContext) {
       return DraggableScrollableSheet(
@@ -40,7 +42,14 @@ Future<void> showEquipmentHistory(
                 final colors = context.haccpColors;
                 return ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                  // Insets di sistema: il contenuto non finisce sotto la
+                  // barra di navigazione.
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    4,
+                    24,
+                    24 + MediaQuery.paddingOf(context).bottom,
+                  ),
                   children: [
                     Text(
                       equipment.name,

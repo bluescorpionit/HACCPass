@@ -332,7 +332,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
       body: busy
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: screenPadding(context),
               children: [
                 PageHeader(
                   title: 'I tuoi dati, il tuo cloud',

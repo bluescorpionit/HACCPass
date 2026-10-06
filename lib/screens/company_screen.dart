@@ -106,7 +106,7 @@ class _CompanyScreenState extends State<CompanyScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Anagrafica azienda')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        padding: screenPadding(context, top: 8),
         children: [
           PageHeader(
             title: 'Dati dell\u2019attivit\u00E0',

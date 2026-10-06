@@ -220,8 +220,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             )
           : content,
       bottomNavigationBar: SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -232,47 +233,97 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 borderRadius: BorderRadius.circular(3),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (controller.step > 0)
-                    OutlinedButton(
-                      onPressed: _applying ? null : _back,
-                      child: const Text('Indietro'),
-                    ),
-                  const SizedBox(width: 10),
-                  if (controller.step != 0 &&
-                      controller.step != OnboardingController.lastStep)
-                    Expanded(
-                      child: TextButton(
-                        onPressed: _applying ? null : _skip,
-                        child: const Text('Salta questo passo'),
-                      ),
-                    ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: _applying || !_canProceed ? null : _next,
-                      child: _applying
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text('Avanti'),
-                    ),
-                  ),
-                ],
-              ),
+              _buildNavBar(context),
             ],
           ),
         ),
       ),
         );
       },
+    );
+  }
+
+  /// Barra dei pulsanti del wizard, due livelli: riga 1 = Indietro +
+  /// Avanti/Inizia; riga 2 (solo se saltabile) = "Salta questo passo" su
+  /// una riga propria a larghezza piena. Nell'ultimo passo non c'e' mai
+  /// "Avanti". Con altezza scarsa (landscape, < 600 dp) tutto su una riga
+  /// con testi brevi.
+  Widget _buildNavBar(BuildContext context) {
+    final lastStep = OnboardingController.lastStep;
+    final step = controller.step;
+    final skippable = step != 0 && step != lastStep;
+    final isLast = step == lastStep;
+    final compact = MediaQuery.sizeOf(context).height < 600;
+
+    final back = OutlinedButton(
+      onPressed: _applying ? null : _back,
+      child: const Text('Indietro'),
+    );
+
+    final Widget primary;
+    if (isLast) {
+      primary = FilledButton.icon(
+        onPressed: _applying ? null : _finish,
+        icon: const Icon(Icons.rocket_launch_outlined),
+        label: const Text('Inizia'),
+      );
+    } else {
+      primary = FilledButton(
+        onPressed: _applying || !_canProceed ? null : _next,
+        child: _applying
+            ? const SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : const Text('Avanti'),
+      );
+    }
+
+    final skip = TextButton(
+      onPressed: _applying ? null : _skip,
+      child: Text(compact ? 'Salta' : 'Salta questo passo'),
+    );
+
+    if (compact) {
+      return Row(
+        children: [
+          if (step > 0) ...[back, const SizedBox(width: 10)],
+          if (skippable)
+            Expanded(
+              child: Center(
+                child: Tooltip(
+                  message: 'Salta questo passo',
+                  child: skip,
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+          primary,
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            if (step > 0) ...[back, const SizedBox(width: 10)],
+            Expanded(child: primary),
+          ],
+        ),
+        if (skippable)
+          SizedBox(
+            height: 44,
+            width: double.infinity,
+            child: skip,
+          ),
+      ],
     );
   }
 
@@ -317,16 +368,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             };
 
             if (index == OnboardingController.lastStep) {
+              // "Inizia" sta fisso nella barra inferiore (_buildNavBar):
+              // il corpo resta scorrevole.
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 children: [
                   page,
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _finish,
-                    icon: const Icon(Icons.rocket_launch_outlined),
-                    label: const Text('Inizia'),
-                  ),
                 ],
               );
             }

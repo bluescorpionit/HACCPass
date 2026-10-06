@@ -178,21 +178,15 @@ class CookingScreen extends StatelessWidget {
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final action in cookingCorrectiveActions)
-                        FilterChipX(
-                          label: action,
-                          selected: selectedActions.contains(action),
-                          onSelected: (v) => setSheetState(() {
-                            v
-                                ? selectedActions.add(action)
-                                : selectedActions.remove(action);
-                          }),
-                        ),
-                    ],
+                  // Righe checkbox: etichette lunghe integre, tocco >= 48 dp.
+                  CorrectiveActionPicker(
+                    actions: cookingCorrectiveActions,
+                    selected: selectedActions,
+                    onToggle: (action) => setSheetState(() {
+                      selectedActions.contains(action)
+                          ? selectedActions.remove(action)
+                          : selectedActions.add(action);
+                    }),
                   ),
                 ],
               ],
@@ -1016,6 +1010,8 @@ Future<void> showAttachmentsModuleSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (sheetContext) => ListView(
       padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),

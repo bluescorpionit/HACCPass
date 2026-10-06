@@ -7,6 +7,35 @@ import '../repositories/haccp_repository.dart';
 // Struttura pagina
 // -----------------------------------------------------------------------------
 
+/// Padding per ListView/SingleChildScrollView radice in modalità edge-to-edge.
+///
+/// Somma gli inset di sistema alla spaziatura base: quando si passa `padding`
+/// esplicito a uno scrollView Flutter non aggiunge più `MediaQuery.padding`.
+/// Gli inset già consumati (AppBar, SafeArea, bottom bar della shell) valgono
+/// 0 nel `MediaQuery` locale, quindi la somma è sicura in ogni contesto.
+///
+/// [hasBottomBar] per le tab della shell (l'inferiore della barra è gestito
+/// dalla barra stessa); [hasFab] aggiunge 88 dp perché l'ultima card scorra
+/// sopra il pulsante flottante.
+EdgeInsets screenPadding(
+  BuildContext context, {
+  double top = 16,
+  double bottom = 32,
+  double horizontal = 20,
+  bool hasBottomBar = false,
+  bool hasFab = false,
+}) {
+  final insets = MediaQuery.paddingOf(context);
+  return EdgeInsets.fromLTRB(
+    horizontal + insets.left,
+    // Sotto una AppBar il MediaQuery locale ha già top = 0: sommare è
+    // sempre sicuro.
+    top + insets.top,
+    horizontal + insets.right,
+    bottom + (hasBottomBar ? 0 : insets.bottom) + (hasFab ? 88 : 0),
+  );
+}
+
 /// Scaffold per le schermate aperte via `Navigator.push`: AppBar con titolo,
 /// freccia indietro automatica, sfondo opaco dal tema e body in SafeArea.
 /// Le tab della shell non lo usano (restano senza AppBar).
@@ -206,7 +235,11 @@ class StatusPill extends StatelessWidget {
           colors.warningBg,
           Icons.warning_amber_outlined
         ),
-      StatusType.danger => (colors.danger, colors.dangerBg, Icons.error_outline),
+      StatusType.danger => (
+          colors.danger,
+          colors.dangerBg,
+          Icons.error_outline
+        ),
       StatusType.info => (colors.info, colors.infoBg, Icons.info_outline),
       StatusType.neutral => (
           Theme.of(context).colorScheme.onSurfaceVariant,
@@ -347,7 +380,7 @@ class QuickActionTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -449,12 +482,14 @@ class TodoRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(width: 5, decoration: BoxDecoration(
-                color: stripe,
-                borderRadius: const BorderRadius.horizontal(
-                  left: Radius.circular(20),
-                ),
-              )),
+              Container(
+                  width: 5,
+                  decoration: BoxDecoration(
+                    color: stripe,
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(20),
+                    ),
+                  )),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
@@ -471,7 +506,7 @@ class TodoRow extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -504,7 +539,8 @@ class TodoRow extends StatelessWidget {
 // -----------------------------------------------------------------------------
 
 /// Bottom sheet riutilizzabile con titolo, contenuto scorrevole e bottone di
-/// salvataggio sempre visibile sopra la tastiera.
+/// salvataggio sempre visibile sopra la tastiera e fuori dalla barra di
+/// navigazione di sistema.
 Future<T?> showFormSheet<T>({
   required BuildContext context,
   required String title,
@@ -517,15 +553,18 @@ Future<T?> showFormSheet<T>({
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
+    // Il foglio non sale mai sotto la barra di stato.
+    useSafeArea: true,
     showDragHandle: true,
     builder: (sheetContext) {
+      final mq = MediaQuery.of(sheetContext);
       return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-        ),
+        padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
         child: Container(
+          // Altezza massima sullo spazio utile (sotto la barra di stato):
+          // il resto scorre dentro il foglio.
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
+            maxHeight: (mq.size.height - mq.padding.top) * 0.92,
           ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
@@ -549,14 +588,24 @@ Future<T?> showFormSheet<T>({
                   child: builder(sheetContext),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                child: FilledButton.icon(
-                  onPressed: () {
-                    if (onSave()) Navigator.pop(sheetContext, true);
-                  },
-                  icon: Icon(saveIcon),
-                  label: Text(saveLabel),
+              // Barra azioni fissa: mai coperta da tastiera né da barra di
+              // navigazione di sistema (SafeArea + padding minimo 16).
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    8,
+                    24,
+                    mq.viewPadding.bottom.clamp(16.0, double.infinity),
+                  ),
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      if (onSave()) Navigator.pop(sheetContext, true);
+                    },
+                    icon: Icon(saveIcon),
+                    label: Text(saveLabel),
+                  ),
                 ),
               ),
             ],
@@ -753,6 +802,51 @@ class FilterChipX extends StatelessWidget {
   }
 }
 
+/// Selettore delle azioni correttive per letture fuori limite: righe
+/// checkbox al posto dei chip. Con testi lunghi i chip troncano l'etichetta
+/// ("…guarnizi…"); qui il testo va a capo restando integro e ogni riga ha
+/// area di tocco >= 48 dp.
+class CorrectiveActionPicker extends StatelessWidget {
+  const CorrectiveActionPicker({
+    super.key,
+    required this.actions,
+    required this.selected,
+    this.onToggle,
+  });
+
+  final List<String> actions;
+  final Set<String> selected;
+  final ValueChanged<String>? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < actions.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: theme.colorScheme.outlineVariant,
+              ),
+            CheckboxListTile(
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: selected.contains(actions[i]),
+              onChanged:
+                  onToggle == null ? null : (value) => onToggle!(actions[i]),
+              title: Text(actions[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Campo data tocco: apre il date picker.
 class DateField extends StatelessWidget {
   const DateField({
@@ -784,7 +878,8 @@ class DateField extends StatelessWidget {
             context: context,
             initialDate: value ?? DateTime.now(),
             firstDate: firstDate ?? DateTime(2000),
-            lastDate: lastDate ?? DateTime.now().add(const Duration(days: 3650)),
+            lastDate:
+                lastDate ?? DateTime.now().add(const Duration(days: 3650)),
             locale: const Locale('it', 'IT'),
           );
           if (picked != null) onChanged(picked);
@@ -875,7 +970,9 @@ class _LiveQueryState<T> extends State<LiveQuery<T>> {
     if (!mounted) return;
     if (widget.repository.revision.value == _revision) return;
     _revision = widget.repository.revision.value;
-    setState(() => _future = widget.loader());
+    setState(() {
+      _future = widget.loader();
+    });
   }
 
   @override
@@ -984,9 +1081,7 @@ class AppBottomBar extends StatelessWidget {
                 child: Icon(
                   selected ? item.selectedIcon : item.icon,
                   size: 26,
-                  color: selected
-                      ? theme.colorScheme.onPrimaryContainer
-                      : fg,
+                  color: selected ? theme.colorScheme.onPrimaryContainer : fg,
                 ),
               ),
               if (item.badge > 0)
@@ -1099,8 +1194,8 @@ class _SparklinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const leftPad = 34.0;
-    final chart = Rect.fromLTWH(leftPad, 6, size.width - leftPad - 6,
-        size.height - 18);
+    final chart =
+        Rect.fromLTWH(leftPad, 6, size.width - leftPad - 6, size.height - 18);
 
     if (points.isEmpty) {
       final tp = TextPainter(
@@ -1128,7 +1223,8 @@ class _SparklinePainter extends CustomPainter {
 
     double y(double v) => chart.bottom - (v - lo) / (hi - lo) * chart.height;
     double x(int i) =>
-        chart.left + (points.length == 1
+        chart.left +
+        (points.length == 1
             ? chart.width / 2
             : i / (points.length - 1) * chart.width);
 
