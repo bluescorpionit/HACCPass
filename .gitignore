@@ -48,3 +48,10 @@ app.*.map.json
 android/key.properties
 *.jks
 *.keystore
+
+# Igiene del repository (Prompt 10): file locali che non vanno tracciati.
+# I file restano sul disco, ma fuori da git.
+/*.tar.gz
+pubspec-1.yaml
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

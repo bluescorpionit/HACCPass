@@ -92,8 +92,10 @@ Future<void> main() async {
   );
 }
 
-/// Ricollega il cloud salvato nelle impostazioni (senza riaprire l'OAuth se
-/// la sessione \u00E8 ancora valida).
+/// Ricollega il cloud salvato nelle impostazioni. SOLO silenzioso
+/// (`interactive: false`): nessuna finestra di Google all'avvio, nemmeno
+/// se il token è scaduto — in quel caso Drive viene segnato come "da
+/// ricollegare" (Prompt 10, D) senza perdere la configurazione.
 Future<void> _restoreCloudSession(
   HaccpRepository repository,
   SyncService sync,
@@ -101,11 +103,14 @@ Future<void> _restoreCloudSession(
   final provider = await repository.getSetting('cloud_provider');
   if (provider == 'gdrive' && (Platform.isAndroid || Platform.isIOS)) {
     final drive = GoogleDriveProvider();
-    final connected = await drive.connect();
+    final connected = await drive.connect(interactive: false);
     if (connected) {
       sync.cloud = drive;
+      await repository.setSetting('cloud_needs_reconnect', '');
       return;
     }
+    // Configurazione conservata: solo avviso non bloccante.
+    await repository.setSetting('cloud_needs_reconnect', '1');
   }
   // Provider "solo dispositivo": nessun collegamento da ripristinare.
   if (provider.isEmpty) {
@@ -357,8 +362,10 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     }
   }
 
-  /// Al ritorno in primo piano: svuota la coda di caricamento cloud.
+  /// Al ritorno in primo piano: svuota la coda di caricamento cloud e
+  /// aggiorna l'ancora della prova (lastSeen / rilevamento orologio).
   Future<void> _onAppResumed() async {
+    unawaited(widget.license.onAppResumed());
     await widget.sync.processQueue();
   }
 

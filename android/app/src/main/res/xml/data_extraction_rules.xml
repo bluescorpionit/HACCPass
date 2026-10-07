@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Regole di estrazione dati Android 12+ (API 31+,
+     android:dataExtractionRules). Stessa politica di backup_rules.xml:
+     con almeno un <include> il backup cloud e il trasferimento
+     dispositivo contengono SOLO l'ancora della prova gratuita
+     (files/anchor/trial_anchor.json). Database, allegati, preferenze e
+     cache restano fuori. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="anchor/trial_anchor.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="anchor/trial_anchor.json" />
+    </device-transfer>
+</data-extraction-rules>

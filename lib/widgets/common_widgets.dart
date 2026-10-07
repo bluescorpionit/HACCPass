@@ -475,6 +475,10 @@ class TodoRow extends StatelessWidget {
     };
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,

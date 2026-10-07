@@ -35,6 +35,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
   var busy = false;
   String status = '';
   List<CloudFile> remoteBackups = [];
+  var needsReconnect = false;
 
   CloudStorageProvider get _provider => widget.sync.cloud ?? LocalFilesProvider();
 
@@ -48,12 +49,16 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
     final lastBackup = await widget.repository.getSetting('last_backup_at');
     final lastParsed = DateTime.tryParse(lastBackup);
     final queue = await widget.repository.getSyncQueue();
+    final configured = await widget.repository.getSetting('cloud_provider');
+    final flagged =
+        await widget.repository.getSetting('cloud_needs_reconnect');
     if (!mounted) return;
     setState(() {
       status = lastParsed == null
           ? 'Mai eseguito'
           : 'Ultimo backup: ${fmtDateTime(lastParsed)}';
       _pendingCount = queue.length;
+      needsReconnect = configured == 'gdrive' && flagged == '1';
     });
     if (_provider.isConnected) {
       try {
@@ -72,13 +77,18 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
     setState(() => busy = true);
     try {
       final provider = GoogleDriveProvider();
-      final connected = await provider.connect();
+      // Dal pulsante il collegamento PUÒ mostrare le finestre Google
+      // (selettore account / consenso scope).
+      final connected = await provider.connect(interactive: true);
       if (!connected) {
+        final failure = provider.lastConnectError;
+        final message = failure == null
+            ? 'Collegamento a Google Drive non completato.'
+            : provider.humanError(failure);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('Collegamento a Google Drive non completato.'),
+          SnackBar(
+            content: Text(message),
           ),
         );
         return;
@@ -86,6 +96,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
       widget.sync.cloud = provider;
       await widget.repository.setSetting('cloud_provider', provider.id);
       await widget.repository.setSetting('cloud_account', provider.accountLabel ?? '');
+      await widget.repository.setSetting('cloud_needs_reconnect', '');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -420,6 +431,32 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                         ],
                         const SizedBox(height: 6),
                         Text(status),
+                        if (needsReconnect && !connected) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.sync_problem,
+                                size: 18,
+                                color: theme.colorScheme.error,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Google Drive da ricollegare: il '
+                                  'collegamento automatico all\u2019avvio non '
+                                  '\u00E8 riuscito (token scaduto o rete '
+                                  'assente). La configurazione \u00E8 intatta: '
+                                  'premi "Collega Google Drive".',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         if (_pendingCount > 0) ...[
                           const SizedBox(height: 4),
                           Text('In attesa di caricamento: $_pendingCount file'),

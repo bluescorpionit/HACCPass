@@ -1,14 +1,13 @@
 import 'dart:io';
 
-import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
-import 'package:flutter/foundation.dart';
-import 'cloud_storage.dart';
 
-/// Scope minimo: l'app vede solo i file che crea o che il cliente le apre.
-/// Non usare scope pi\u00F9 ampi: richiederebbero la verifica di sicurezza.
-const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
+import 'cloud_storage.dart';
+import 'drive_auth_gateway.dart';
+
+export 'drive_auth_gateway.dart' show driveFileScope;
 
 
 /// Archivio nel Google Drive **personale** del cliente.
@@ -16,15 +15,28 @@ const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
 /// Cartella visibile "HACCPass" con sottocartelle Backup, Report e Foto:
 /// il cliente ritrova i suoi file da qualsiasi dispositivo.
 /// Serve solo come archivio: mai "Accedi con Google" (guideline 4.8 Apple).
+///
+/// `connect(interactive: false)` (usato dal ripristino della sessione
+/// all'avvio) usa SOLO autenticazione silenziosa: nessuna finestra di
+/// Google; se manca qualcosa restituisce `false` e l'app segna Drive
+/// come "da ricollegare" (Prompt 10, D).
 class GoogleDriveProvider extends CloudStorageProvider {
   static const _serverClientId =
     String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
 
-  GoogleDriveProvider();
+  GoogleDriveProvider({DriveAuthGateway? gateway})
+      : _gateway = gateway ??
+            GoogleSignInDriveAuthGateway(serverClientId: _serverClientId);
 
-  final GoogleSignIn _signIn = GoogleSignIn.instance;
-  GoogleSignInAccount? _account;
+  final DriveAuthGateway _gateway;
+
+  /// `GoogleSignIn.instance.initialize()` va chiamato UNA sola volta per
+  /// esecuzione (richiamarlo lancia un'eccezione).
+  static bool _initialized = false;
+
+  String? _accountEmail;
   drive.DriveApi? _api;
+  Object? _lastConnectError;
 
   static const _rootName = 'HACCPass';
   final _folderIds = <String, String>{};
@@ -39,39 +51,49 @@ class GoogleDriveProvider extends CloudStorageProvider {
   bool get isConnected => _api != null;
 
   @override
-  String? get accountLabel => _account?.email;
+  String? get accountLabel => _accountEmail;
+
+  Object? get lastConnectError => _lastConnectError;
 
   Future<void> _initSignIn() async {
-    try {
-      //await _signIn.initialize();
-      await _signIn.initialize(
-        serverClientId: _serverClientId.isEmpty ? null : _serverClientId,
+    if (_initialized) return;
+    await _gateway.initialize();
+    _initialized = true;
+  }
+
+  void _validateConfiguration() {
+    if (Platform.isAndroid && _serverClientId.isEmpty) {
+      throw StateError(
+        'Configurazione Google Drive incompleta su Android: '
+        'manca GOOGLE_SERVER_CLIENT_ID (OAuth Web client ID).',
       );
-    } on Exception catch (e) {
-      debugPrint('Drive initialize: $e');
     }
   }
 
   @override
-  Future<bool> connect() async {
+  Future<bool> connect({bool interactive = true}) async {
     try {
+      _lastConnectError = null;
+      _validateConfiguration();
       await _initSignIn();
 
-      _account = await _signIn.attemptLightweightAuthentication();
-      _account ??= await _signIn.authenticate(scopeHint: const [driveFileScope]);
+      // Prima solo silenzioso; le finestre di Google (authenticate /
+      // authorizeScopes) sono riservate a interactive: true.
+      var session = await _gateway.tryRestoreSession();
+      if (session == null && interactive) {
+        session = await _gateway.interactiveSession();
+      }
+      if (session == null) {
+        return false;
+      }
 
-      final authorizationClient = _account!.authorizationClient;
-      var authorization = await authorizationClient
-          .authorizationForScopes(const [driveFileScope]);
-      authorization ??=
-          await authorizationClient.authorizeScopes(const [driveFileScope]);
-
-      final client = authorization.authClient(scopes: const [driveFileScope]);
-      _api = drive.DriveApi(client);
+      _accountEmail = session.email;
+      _api = session.api;
       _folderIds.clear();
       return true;
     } catch (e, st) {
-       debugPrint('Drive connect fallito: $e\n$st');
+      _lastConnectError = e;
+      debugPrint('Drive connect fallito: $e\n$st');
       _api = null;
       return false;
     }
@@ -174,11 +196,12 @@ class GoogleDriveProvider extends CloudStorageProvider {
   @override
   Future<void> disconnect() async {
     _api = null;
-    _account = null;
+    _accountEmail = null;
+    _lastConnectError = null;
     _folderIds.clear();
     try {
       await _initSignIn();
-      await _signIn.disconnect();
+      await _gateway.disconnect();
     } catch (_) {
       // Disconnessione gi\u00E0 avvenuta o servizio non disponibile.
     }
@@ -186,6 +209,18 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
   @override
   String humanError(Object error) {
+    if (error is StateError &&
+        error.message
+            .toString()
+            .contains('manca GOOGLE_SERVER_CLIENT_ID')) {
+      return 'Google Drive non configurato: manca GOOGLE_SERVER_CLIENT_ID '
+          '(OAuth Web client ID) nella build Android.';
+    }
+    if (error is GoogleSignInException &&
+        error.code == GoogleSignInExceptionCode.clientConfigurationError) {
+      return 'Configurazione Google non valida: su Android serve il '
+          'serverClientId (OAuth Web client ID).';
+    }
     if (error is GoogleSignInException &&
         error.code == GoogleSignInExceptionCode.canceled) {
       return 'Collegamento annullato.';

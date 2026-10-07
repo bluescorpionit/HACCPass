@@ -85,7 +85,8 @@ class BackupService {
         'dbSha256': dbHash
             .map((b) => b.toRadixString(16).padLeft(2, '0'))
             .join(),
-      };      final manifestBytes = utf8.encode(jsonEncode(manifest));
+      };
+      final manifestBytes = utf8.encode(jsonEncode(manifest));
       archive.addFile(
         ArchiveFile('manifest.json', manifestBytes.length, manifestBytes),
       );
@@ -360,34 +361,44 @@ class BackupService {
     onProgress?.call('Verifico l\u2019integrit\u00E0 del database\u2026');
     final tempDir = await Directory.systemTemp.createTemp('bh_restore');
     final tempDb = p.join(tempDir.path, 'check.db');
-    await File(tempDb).writeAsBytes(content.dbBytes, flush: true);
-
-    final integrityOk = await _checkIntegrity(tempDb);
-    if (!integrityOk) {
-      throw BackupException(
-        'Il database nel backup non \u00E8 integro. Ripristino annullato. '
-        '(Il backup di sicurezza \u00E8 in $safetyPath)',
-      );
-    }
-
-    onProgress?.call('Sostituisco i dati\u2026');
-    await repository.closeForBackup();
     try {
-      final dbPath = _database.path;
-      await File(tempDb).copy(dbPath);
+      await File(tempDb).writeAsBytes(content.dbBytes, flush: true);
+
+      final integrityOk = await _checkIntegrity(tempDb);
+      if (!integrityOk) {
+        throw BackupException(
+          'Il database nel backup non \u00E8 integro. Ripristino annullato. '
+          '(Il backup di sicurezza \u00E8 in $safetyPath)',
+        );
+      }
+
+      onProgress?.call('Sostituisco i dati\u2026');
+      await repository.closeForBackup();
+      try {
+        final dbPath = _database.path;
+        await File(tempDb).copy(dbPath);
+      } finally {
+        await _database.initialize();
+        repository.revision.value++;
+      }
     } finally {
-      await _database.initialize();
-      repository.revision.value++;
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {
+        // Cleanup best effort: un eventuale file lock del SO non deve
+        // interrompere il ripristino.
+      }
     }
   }
 
   Future<bool> _checkIntegrity(String path) async {
     // Apertura in sola lettura: verifica l'integrit\u00E0 del file.
+    // Non impostare `version`: sqflite prova a scrivere `user_version`
+    // anche in read-only e su Android genera SQLITE_READONLY.
     final db = await openDatabase(
       path,
       readOnly: true,
       singleInstance: false,
-      version: 1,
     );
     try {
       final result = await db.rawQuery('PRAGMA integrity_check');

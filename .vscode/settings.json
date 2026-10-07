@@ -1,4 +1,8 @@
 {
+  "dart.flutterRunAdditionalArgs": [
+    "--dart-define=BH_LICENSE_SECRET=dev-secret",
+    "--dart-define=GOOGLE_SERVER_CLIENT_ID=157631627125-oap72l979069cqnqnu3ghkhjkhinh06a.apps.googleusercontent.com"
+  ],
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
   "C_Cpp_Runner.debuggerPath": "gdb",

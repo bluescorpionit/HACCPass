@@ -2,12 +2,15 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../services/license_service.dart';
 import '../widgets/common_widgets.dart' show screenPadding;
 
-/// Paywall: prova, acquisti in-app e chiave di licenza offline.
+/// Paywall: prova gratuita dello store, abbonamento annuale e chiave di
+/// licenza offline (vendita diretta, nascosta su iOS).
+///
+/// Testi e prezzi sono sempre letti dallo store: mai importi o durate
+/// scritti a mano.
 class LicenseScreen extends StatefulWidget {
   const LicenseScreen({super.key, required this.license});
 
@@ -165,12 +168,20 @@ class _LicenseScreenState extends State<LicenseScreen> {
                 ? 'Prova gratuita completa: ${service.trialDaysLeft} giorni rimanenti.'
                 : 'Tutte le funzioni sono sbloccate.'
           )
-        : (
-            Icons.lock_outline,
-            'Prova scaduta',
-            'L\u2019app \u00E8 in sola lettura: puoi consultare i dati ma non '
-                'registrare né esportare.'
-          );
+        : service.clockTampered
+            ? (
+                Icons.schedule_outlined,
+                'Orologio del dispositivo alterato',
+                'Verifica data e ora del telefono. I tuoi dati sono al '
+                    'sicuro: puoi consultarli ma non registrare nuove '
+                    'operazioni finch\u00E9 la data non \u00E8 corretta.'
+              )
+            : (
+                Icons.lock_outline,
+                'Prova scaduta',
+                'L\u2019app \u00E8 in sola lettura: puoi consultare i dati ma non '
+                    'registrare né esportare.'
+              );
 
     return Card(
       color: service.canWrite ? null : colors.errorContainer,
@@ -228,13 +239,40 @@ class _LicenseScreenState extends State<LicenseScreen> {
       );
     }
 
+    final trialCta =
+        !service.canWrite && service.freeTrialAvailable;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (service.annualPrice.isNotEmpty)
+        if (trialCta) ...[
+          // Prova gratuita gestita dallo store: reinstallare non la
+          // rigenera. Testo e prezzo letti dallo store.
           SizedBox(
             height: 56,
             child: FilledButton.icon(
+              onPressed: () => _buyAnnual(service),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Inizia prova gratuita'),
+            ),
+          ),
+          if (service.annualOfferText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                service.annualOfferText,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          const SizedBox(height: 10),
+        ],
+        if (service.annualPrice.isNotEmpty)
+          SizedBox(
+            height: 56,
+            child: OutlinedButton.icon(
               onPressed: () => _buyAnnual(service),
               icon: const Icon(Icons.calendar_month),
               label: Text(
@@ -243,18 +281,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
             ),
           ),
         const SizedBox(height: 10),
-        if (service.lifetimePrice.isNotEmpty)
-          SizedBox(
-            height: 56,
-            child: OutlinedButton.icon(
-              onPressed: () => _buyLifetime(service),
-              icon: const Icon(Icons.all_inclusive),
-              label: Text(
-                'Licenza a vita \u2022 ${service.lifetimePrice}',
-              ),
-            ),
-          ),
-        const SizedBox(height: 10),
+        // Richiesto da Apple: sempre visibile su iOS.
         TextButton.icon(
           onPressed: () => service.restorePurchases(),
           icon: const Icon(Icons.restore),
@@ -266,26 +293,10 @@ class _LicenseScreenState extends State<LicenseScreen> {
 
   Future<void> _buyAnnual(LicenseService service) async {
     try {
-      final response = await InAppPurchase.instance
-          .queryProductDetails({LicenseProductIds.annual});
-      final product = response.productDetails
-          .where((p) => p.id == LicenseProductIds.annual)
-          .firstOrNull;
-      if (product != null) {
-        await service.buyOrRestore(product);
-      }
-    } catch (_) {
-      // Lo stato arriva dalla purchaseStream / lastError.
-    }
-  }
-
-  Future<void> _buyLifetime(LicenseService service) async {
-    try {
-      final response = await InAppPurchase.instance
-          .queryProductDetails({LicenseProductIds.lifetime});
-      final product = response.productDetails
-          .where((p) => p.id == LicenseProductIds.lifetime)
-          .firstOrNull;
+      // Sceglie l'offerta con fase gratuita se presente (Android) o il
+      // prodotto annuale (iOS: l'offerta introduttiva è applicata da
+      // StoreKit).
+      final product = service.productToBuy();
       if (product != null) {
         await service.buyOrRestore(product);
       }

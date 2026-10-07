@@ -23,7 +23,9 @@ dependencies:
   path_provider: ^2.1.5
   file_picker: ^10.1.9
   in_app_purchase: ^3.2.3
+  in_app_purchase_android: ^0.5.3
   crypto: ^3.0.6
+  flutter_secure_storage: ^9.2.2
   meta: ^1.18.0
   image_picker: ^1.2.3
   flutter_image_compress: ^2.5.1

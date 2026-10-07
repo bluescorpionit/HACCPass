@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Regole di backup automatico Android (API &lt; 31, android:fullBackupContent).
+
+     Quando è presente almeno un <include>, il backup contiene SOLO i
+     percorsi inclusi: nel backup entra unicamente l'ancora della prova
+     gratuita (files/anchor/trial_anchor.json, firmata HMAC: vedi
+     lib/core/license/trial_anchor.dart). Database, allegati, preferenze
+     e cache restano FUORI (nessun ripristino parziale del database).
+
+     LIMITE documentato (docs/acquisti.md): su Android il trucco funziona
+     solo se l'utente ha il backup Google attivo e il dispositivo lo
+     ripristina alla reinstallazione. -->
+<full-backup-content>
+    <include domain="file" path="anchor/trial_anchor.json" />
+</full-backup-content>

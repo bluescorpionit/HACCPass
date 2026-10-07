@@ -10,20 +10,29 @@
             "request": "launch",
             "type": "dart",
             "toolArgs": [
-                "--dart-define=BH_LICENSE_SECRET=dev-secret"
+                "--dart-define=BH_LICENSE_SECRET=dev-secret",
+                "--dart-define=GOOGLE_SERVER_CLIENT_ID=157631627125-oap72l979069cqnqnu3ghkhjkhinh06a.apps.googleusercontent.com"
             ]
         },
         {
             "name": "HaccpPro (profile mode)",
             "request": "launch",
             "type": "dart",
-            "flutterMode": "profile"
+            "flutterMode": "profile",
+            "toolArgs": [
+                "--dart-define=BH_LICENSE_SECRET=dev-secret",
+                "--dart-define=GOOGLE_SERVER_CLIENT_ID=157631627125-oap72l979069cqnqnu3ghkhjkhinh06a.apps.googleusercontent.com"
+            ]
         },
         {
             "name": "HaccpPro (release mode)",
             "request": "launch",
             "type": "dart",
-            "flutterMode": "release"
+            "flutterMode": "release",
+            "toolArgs": [
+                "--dart-define=BH_LICENSE_SECRET=dev-secret",
+                "--dart-define=GOOGLE_SERVER_CLIENT_ID=157631627125-oap72l979069cqnqnu3ghkhjkhinh06a.apps.googleusercontent.com"
+            ]
         }
     ]
 }

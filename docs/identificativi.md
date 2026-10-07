@@ -15,8 +15,8 @@ publicata: dopo la pubblicazione l'identificativo non si può più cambiare.
 | macOS | Copyright | © 2026 Blue Scorpion. All rights reserved. |
 | Windows | `CompanyName` / `LegalCopyright` | Blue Scorpion / Copyright (C) 2026 Blue Scorpion. All rights reserved. |
 | Linux | `APPLICATION_ID` | `it.bluescorpion.haccpass` |
-| Acquisti in-app | Annuale | `it.bluescorpion.haccpass.annual` |
-| Acquisti in-app | A vita | `it.bluescorpion.haccpass.lifetime` (mantenuto nel codice: se il modello definitivo resta solo 39 €/anno, basta NON creare il prodotto nello store e rimuovere l'id) |
+| Acquisti in-app | Annuale | `it.bluescorpion.haccpass.annual` (39 €/anno, offerta con prova gratuita 14 giorni — vedi `docs/acquisti.md`) |
+| Acquisti in-app | A vita | **NON più offerto in-app** dal Prompt 10: resta solo la chiave offline `BH1-…` con data `99991231` (vendita diretta, nascosta su iOS). `LicenseProductIds.lifetime` è stato rimosso dal codice. |
 | QR attrezzature | Schema attuale | `haccpass://equipment/<id>` (generato nei PDF) |
 | QR attrezzature | Schema storico | `bluehaccp://equipment/<id>` — **mantenuto valido** per i QR già stampati nei test (entrambi nel manifest Android e nel parser `lib/core/deep_links.dart`) |
 
@@ -94,11 +94,29 @@ per il backup su Drive), UNA VOCE PER CHIAVE con il package
    Console, dopo il primo caricamento) — per gli OAuth client delle build
    distribuite.
 
+### `GOOGLE_SERVER_CLIENT_ID` (obbligatorio su Android)
+
+Per collegare Google Drive con `google_sign_in` su Android, la build deve
+ricevere anche il **Web OAuth client ID** come `dart-define`:
+
+```
+flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=<web-oauth-client-id>
+```
+
+e per release:
+
+```
+flutter build apk --release --dart-define=GOOGLE_SERVER_CLIENT_ID=<web-oauth-client-id>
+```
+
+Se il valore manca, il collegamento Drive fallisce con errore di
+configurazione (`serverClientId must be provided on Android`).
+
 Da registrare poi:
 
 - **Play Console**: applicazione con package `it.bluescorpion.haccpass`;
-  prodotti in-app `it.bluescorpion.haccpass.annual` (e
-  `it.bluescorpion.haccpass.lifetime` se mantenuto), prezzi e tasse;
+  abbonamento `it.bluescorpion.haccpass.annual` con offerta di prova
+  gratuita 14 giorni (procedura in `docs/acquisti.md`), prezzi e tasse;
 - **App Store Connect**: app con Bundle ID `it.bluescorpion.haccpass`
   (registrare l'id su developer.apple.com) e acquisti in-app con gli
   stessi id prodotto.
@@ -116,3 +134,22 @@ flutter build apk --release --dart-define=BH_LICENSE_SECRET=<valore>
 
 Il valore va conservato insieme alla keystore: serve per generare le
 chiavi offline (strumento `license_keygen`).
+
+### AVVERTENZA: `dev-secret` in `.vscode/launch.json` e `settings.json`
+
+Le configurazioni VS Code usano un segreto **di solo sviluppo**
+(`dev-secret`) per comodità di `flutter run`. Quel valore è noto (sta
+nel repository): **NON va mai usato per build distribuite** — né
+TestFlight né Play né APK/IPA consegnati a clienti. Ogni build
+distribuita usa il segreto reale passato come variabile d'ambiente
+tramite `tool/build_release.bat` / `tool/build_release.sh` (vedi
+sotto).
+
+### Script di build di release
+
+`tool/build_release.bat` (Windows) e `tool/build_release.sh`
+(Linux/macOS) richiedono come **variabili d'ambiente**
+`BH_LICENSE_SECRET` e `GOOGLE_SERVER_CLIENT_ID`, falliscono con
+messaggio chiaro se mancano (o se manca `android/key.properties`) e
+lanciano `flutter build appbundle --release --dart-define=...`.
+Nessun segreto è scritto negli script né nel repository.

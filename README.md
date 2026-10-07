@@ -26,7 +26,10 @@ nessun server, nessun account, tutti i dati restano in un database SQLite locale
 - **Report**: dossier HACCP completo per periodo (copertina, indicatori,
   registri, firma), singoli registri, menù allergeni, appendice fotografica
   (opzionale) delle NC e merci respinte, logo aziendale in intestazione.
-- **Licenza**: prova 14 giorni, IAP (annuale + vita), chiavi offline.
+- **Licenza**: prova 14 giorni (primaria gestita dallo store con offerta
+  gratuita, riserva locale con "ancora" che sopravvive alla
+  reinstallazione — vedi `docs/acquisti.md`), IAP annuale, chiavi
+  offline. Licenza a vita solo via chiave offline, mai in-app.
 
 ### Correzioni visive e accessibilità (v3)
 
@@ -157,7 +160,9 @@ merci respinte finiscono nell'appendice fotografica del dossier.
 ```
 flutter pub get && flutter run        # sviluppo (launch.json include il secret dev)
 flutter analyze && flutter test       # verifiche
-flutter build apk --dart-define=BH_LICENSE_SECRET=<SEGRETO>   # release Android
+tool/build_release.bat                # release Android: richiede BH_LICENSE_SECRET
+                                      # e GOOGLE_SERVER_CLIENT_ID come variabili
+                                      # d'ambiente + android/key.properties
 flutter build ipa --release --dart-define=BH_LICENSE_SECRET=<SEGRETO>  # iOS (macOS)
 dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetime  # chiave
 ```
@@ -199,9 +204,10 @@ sistema (nessun permesso galleria), `POST_NOTIFICATIONS` dichiarato.
 
 ### Acquisti in-app
 
-ID prodotto allineati all'identificativo: `it.bluescorpion.haccpass.annual`
-(abbonamento) e `it.bluescorpion.haccpass.lifetime` (a vita, mantenuto nel
-codice: creare solo l'annuale se il modello definitivo resta 39 €/anno).
+ID prodotto allineato all'identificativo: `it.bluescorpion.haccpass.annual`
+(abbonamento annuale 39 € con offerta di prova gratuita di 14 giorni,
+come descritto in `docs/acquisti.md`). **Nessun prodotto a vita negli
+store**: la licenza a vita resta solo come chiave offline diretta.
 Build di release SEMPRE con `--dart-define=BH_LICENSE_SECRET=<valore>`:
 con segreto vuoto l'app si rifiuta di avviarsi. QR attrezzature: schema
 attuale `haccpass://`, lo storico `bluehaccp://` resta valido.

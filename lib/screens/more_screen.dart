@@ -158,6 +158,15 @@ class MoreScreen extends StatelessWidget {
           Icons.sensors,
           () => _push(context, const SensorDiagnosticsScreen()),
         ),
+      // Prompt 10: azzeramento prova/licenza, visibile SOLO nelle build
+      // di debug (in release la voce non esiste e il metodo non fa nulla).
+      if (kDebugMode)
+        (
+          'Azzera prova e licenza (debug)',
+          'Cancella prova, ancora e stato acquisti, poi riavvia lo stato',
+          Icons.restart_alt,
+          () => _confirmDebugReset(context),
+        ),
     ];
 
     return ListView(
@@ -228,5 +237,39 @@ class MoreScreen extends StatelessWidget {
   void _push(BuildContext context, Widget screen) {
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
+  /// Conferma l'azzeramento di prova e licenza (solo build debug).
+  Future<void> _confirmDebugReset(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Azzerare prova e licenza?'),
+        content: const Text(
+          'Cancella la data della prova, l\u2019ancora (Keychain/file), le '
+          'impostazioni license_* e iap_*, poi riavvia lo stato del '
+          'servizio. Disponibile solo nelle build di debug.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Azzera'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await license.debugReset();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Prova e licenza azzerate (solo build debug).'),
+        ),
+      );
+    }
   }
 }
