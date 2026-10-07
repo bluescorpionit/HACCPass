@@ -9,7 +9,20 @@ import '../../services/attachment_service.dart';
 import '../../services/license_service.dart';
 import '../../widgets/attachment_section.dart';
 import '../../widgets/common_widgets.dart';
+import 'document_scan_flow.dart';
 import 'suppliers_screen.dart';
+
+/// Precompilazione di una riga letto dal documento (Prompt 8, A3).
+typedef ReceiptPrefill = ({
+  String? supplierName,
+  String supplierVat,
+  String? product,
+  String? lot,
+  String? ddt,
+  DateTime? expiresAt,
+  double? quantity,
+  PendingAttachment? attachment,
+});
 
 class ReceiptsScreen extends StatelessWidget {
   const ReceiptsScreen({
@@ -23,6 +36,14 @@ class ReceiptsScreen extends StatelessWidget {
 
   AttachmentService get _attachments =>
       AttachmentService(repository: repository);
+
+  /// Punto d'ingresso pubblico per la coda "Riga i di n" dal documento.
+  Future<void> registerReceipt(
+    BuildContext context, {
+    ReceiptPrefill? prefill,
+    String? queueLabel,
+  }) =>
+      _newReceipt(context, prefill: prefill, queueLabel: queueLabel);
 
   @override
   Widget build(BuildContext context) {
@@ -55,15 +76,62 @@ class ReceiptsScreen extends StatelessWidget {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SuppliersScreen(
-                    repository: repository,
-                    license: license,
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => SuppliersScreen(
+                          repository: repository,
+                          license: license,
+                        ),
+                      )),
+                      icon: const Icon(Icons.local_shipping_outlined),
+                      label: const Text('Gestisci fornitori'),
+                    ),
                   ),
-                )),
-                icon: const Icon(Icons.local_shipping_outlined),
-                label: const Text('Gestisci fornitori'),
+                  const SizedBox(width: 10),
+                  // Prompt 8, A3: lettura automatica dei campi dal
+                  // documento (OCR tutto sul telefono, mai in rete).
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () {
+                        if (!license.ensureLicensed(context)) return;
+                        startDocumentScanFlow(
+                          context,
+                          repository: repository,
+                          attachments: _attachments,
+                          license: license,
+                          onRowsConfirmed: (rows, attachment, head) async {
+                            for (var i = 0; i < rows.length; i++) {
+                              if (!context.mounted) break;
+                              await registerReceipt(
+                                context,
+                                queueLabel:
+                                    'Riga ${i + 1} di ${rows.length}',
+                                prefill: (
+                                  supplierName: head.supplierName?.value,
+                                  supplierVat:
+                                      head.supplierVat?.value ?? '',
+                                  product: rows[i].product,
+                                  lot: rows[i].lot,
+                                  ddt: head.docNumber?.value,
+                                  expiresAt: rows[i].expiresAt,
+                                  quantity: rows[i].quantity,
+                                  attachment:
+                                      i == 0 ? attachment : null,
+                                ),
+                              );
+                            }
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.document_scanner),
+                      label: const Text('Scansiona documento'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               if (receipts.isEmpty)
@@ -93,7 +161,41 @@ class ReceiptsScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _newReceipt(BuildContext context) async {
+  /// Corrispondenza approssimata fornitore (normalizzazione: maiuscole,
+  /// punteggiatura, spazi) con confronto per contenuto/prefisso.
+  Supplier _matchSupplier(List<Supplier> suppliers, String? scannedName) {
+    if (scannedName == null || scannedName.trim().isEmpty) {
+      return suppliers.first;
+    }
+    String normalize(String value) => value
+        .toLowerCase()
+        .replaceAll(RegExp('[^a-z0-9 ]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final target = normalize(scannedName);
+    for (final s in suppliers) {
+      final candidate = normalize(s.name);
+      if (candidate.contains(target) || target.contains(candidate)) {
+        return s;
+      }
+    }
+    // Similarità per token comuni (>60%): gestisce "Società X SRL" vs "X".
+    final targetTokens = target.split(' ').toSet();
+    for (final s in suppliers) {
+      final tokens = normalize(s.name).split(' ').toSet();
+      if (targetTokens.isEmpty || tokens.isEmpty) continue;
+      final common =
+          targetTokens.intersection(tokens).length;
+      if (common / targetTokens.length >= 0.6) return s;
+    }
+    return suppliers.first;
+  }
+
+  Future<void> _newReceipt(
+    BuildContext context, {
+    ReceiptPrefill? prefill,
+    String? queueLabel,
+  }) async {
     final suppliers = await repository.getSuppliers();
     final operator = await repository.defaultOperator();
     if (!context.mounted) return;
@@ -111,19 +213,35 @@ class ReceiptsScreen extends StatelessWidget {
       return;
     }
 
-    final productController = TextEditingController();
+    final productController = TextEditingController(
+      text: prefill?.product ?? '',
+    );
     final tempController = TextEditingController();
-    final lotController = TextEditingController();
-    final ddtController = TextEditingController();
-    final qtyController = TextEditingController();
+    final lotController = TextEditingController(text: prefill?.lot ?? '');
+    final ddtController = TextEditingController(text: prefill?.ddt ?? '');
+    final qtyPrefill = prefill?.quantity;
+    final qtyController = TextEditingController(
+      text: qtyPrefill == null
+          ? ''
+          : qtyPrefill
+              .toStringAsFixed(
+                  qtyPrefill == qtyPrefill.roundToDouble() ? 0 : 3)
+              .replaceAll('.', ','),
+    );
     final noteController = TextEditingController();
     final pending = <PendingAttachment>[];
+    if (prefill?.attachment != null) {
+      pending.add(prefill!.attachment!);
+    }
     const pendingAttachmentsHint =
         'Foto di DDT, etichetta o stato della merce al momento del controllo.';
 
-    var supplier = suppliers.first;
+    // Fornitore: corrispondenza approssimata con il nome letto dal
+    // documento (normalizzazione + similarità); se non c'è, resta il
+    // primo e l'operatore sceglie.
+    var supplier = _matchSupplier(suppliers, prefill?.supplierName);
     var category = goodsCategories.first;
-    DateTime? expiresAt;
+    DateTime? expiresAt = prefill?.expiresAt;
     var packagingOk = true;
     var labelOk = true;
     var expiryOk = true;
@@ -132,7 +250,7 @@ class ReceiptsScreen extends StatelessWidget {
 
     final saved = await showFormSheet<bool>(
       context: context,
-      title: 'Nuova merce in arrivo',
+      title: queueLabel ?? 'Nuova merce in arrivo',
       saveLabel: 'Registra',
       builder: (sheetContext) {
         return StatefulBuilder(

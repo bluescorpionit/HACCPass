@@ -1,4 +1,4 @@
-package com.example.blue_haccp
+package it.bluescorpion.haccpass
 
 import io.flutter.embedding.android.FlutterActivity
 

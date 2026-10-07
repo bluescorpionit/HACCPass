@@ -181,6 +181,51 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
     }
   }
 
+  /// Backup COMPLETO con allegati (Prompt 8, B4): streaming su disco, con
+  /// progresso e annullamento. NON cifrabile (dichiarato all'utente): la
+  /// cifratura attuale richiederebbe l'archivio intero in memoria.
+  Future<void> _fullBackupNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final originBox = context.findRenderObject() as RenderBox?;
+    var cancelled = false;
+    try {
+      final path = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return _FullBackupDialog(
+            onCreated: (file) => Navigator.pop(dialogContext, file),
+            onCancel: () {
+              cancelled = true;
+              Navigator.pop(dialogContext);
+            },
+            backup: widget.backup,
+          );
+        },
+      );
+      if (cancelled) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Backup completo annullato.')),
+        );
+        return;
+      }
+      if (path == null || !mounted) return;
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path)],
+          sharePositionOrigin: originBox != null
+              ? originBox.localToGlobal(Offset.zero) & originBox.size
+              : null,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Backup completo non riuscito: $e')),
+      );
+    }
+  }
+
   Future<String?> _askPassword() {
     final controller = TextEditingController();
     return showDialog<String>(
@@ -392,6 +437,33 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                     label: const Text('Esegui backup ora'),
                   ),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  'Il backup del database NON include le foto e i PDF: per '
+                  'quelli usa Google Drive o il backup completo.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: _fullBackupNow,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Backup completo con allegati'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Database + tutte le foto, scritto un file alla volta '
+                  '(sicuro anche con migliaia di foto). Non \u00E8 cifrabile.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
                 const SizedBox(height: 10),
                 if (connected) ...[
                   SizedBox(
@@ -491,6 +563,76 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+
+/// Dialog di avanzamento del backup completo (streaming, annullabile).
+class _FullBackupDialog extends StatefulWidget {
+  const _FullBackupDialog({
+    required this.backup,
+    required this.onCreated,
+    required this.onCancel,
+  });
+
+  final BackupService backup;
+  final ValueChanged<String> onCreated;
+  final VoidCallback onCancel;
+
+  @override
+  State<_FullBackupDialog> createState() => _FullBackupDialogState();
+}
+
+class _FullBackupDialogState extends State<_FullBackupDialog> {
+  String _status = 'Preparazione...';
+  var _cancelled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _run();
+  }
+
+  Future<void> _run() async {
+    try {
+      final path = await widget.backup.createFullBackup(
+        onProgress: (done, total) {
+          if (mounted) {
+            setState(() => _status =
+                'Scrittura file \$done di \$total (streaming, senza carico di memoria)...');
+          }
+        },
+        shouldCancel: () => _cancelled,
+      );
+      if (_cancelled) {
+        widget.onCancel();
+        return;
+      }
+      if (path != null) widget.onCreated(path);
+    } catch (_) {
+      widget.onCancel();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Backup completo'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(_status),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(() => _cancelled = true),
+          child: const Text('Annulla'),
+        ),
+      ],
     );
   }
 }

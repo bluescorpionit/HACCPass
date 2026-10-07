@@ -77,9 +77,9 @@ void main() {
     final migrationRepo = HaccpRepository(migrationDb);
 
     final db = migrationDb.db;
-    // Il DB sale all'ultima versione (5 con i sensori: le tabelle v4
-    // restano e i dati sono conservati).
-    expect(await db.getVersion(), 5);
+    // Il DB sale all'ultima versione (6 con gli allegati v6: le tabelle
+    // v4 restano e i dati sono conservati).
+    expect(await db.getVersion(), 6);
 
     // Nuove tabelle della v4 presenti.
     for (final table in [

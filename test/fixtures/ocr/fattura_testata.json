@@ -1,0 +1,12 @@
+{
+  "nome": "Fattura con testata (P.IVA valida, data gg-mm-aa, importi italiani)",
+  "lines": [
+    {"text": "ROSSI ALIMENTARI SPA", "box": [110, 45, 720, 100], "confidence": 0.96},
+    {"text": "Sede in Corso Italia 8", "box": [110, 108, 460, 124], "confidence": 0.9},
+    {"text": "P.IVA 02345678904", "box": [110, 130, 350, 146], "confidence": 0.93},
+    {"text": "Fattura n. 2026/118", "box": [110, 180, 380, 197], "confidence": 0.92},
+    {"text": "Data 30-09-26", "box": [110, 205, 300, 221], "confidence": 0.9},
+    {"text": "Imponibile 1.250,50", "box": [110, 400, 360, 417], "confidence": 0.88},
+    {"text": "Totale documento 1.526,11", "box": [110, 425, 420, 442], "confidence": 0.88}
+  ]
+}

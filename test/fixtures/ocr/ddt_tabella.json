@@ -1,0 +1,14 @@
+{
+  "nome": "DDT con tabella a colonne (descrizione, lotto, scadenza, quantità, unità)",
+  "lines": [
+    {"text": "ALIMENTARI ROSSI SRL", "box": [100, 50, 700, 98], "confidence": 0.95},
+    {"text": "Via dei Mille 12, 42121 Reggio Emilia", "box": [100, 105, 620, 122], "confidence": 0.9},
+    {"text": "P.IVA 02345678904", "box": [100, 128, 340, 144], "confidence": 0.92},
+    {"text": "Documento di trasporto n. 452/AA", "box": [100, 170, 520, 188], "confidence": 0.9},
+    {"text": "Data documento 14/10/2026", "box": [100, 195, 380, 212], "confidence": 0.93},
+    {"text": "Descrizione        Lotto       Scad.       Q.tà   UM", "box": [100, 300, 900, 320], "confidence": 0.9},
+    {"text": "Prosciutto cotto affettato LT2215A 12/03/2027 5,500 KG", "box": [100, 330, 900, 350], "confidence": 0.88},
+    {"text": "Mortadella bg 67 BG7530 08/11/2026 3,000 KG", "box": [100, 360, 900, 380], "confidence": 0.85},
+    {"text": "Stracchino 2 pezz. L0449 05/01/2027 12 PZ", "box": [100, 390, 900, 410], "confidence": 0.86}
+  ]
+}

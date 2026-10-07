@@ -97,6 +97,9 @@ class ReminderService {
 
   NotificationDetails get _details => const NotificationDetails(
         android: AndroidNotificationDetails(
+          // 'blue_haccp_promemoria': id storico del canale, NON cambiare
+          // (cambiarlo creerebbe un secondo canale perdendo le
+          // impostazioni di notifica scelte dall'utente).
           'blue_haccp_promemoria',
           'Promemoria HACCP',
           channelDescription:

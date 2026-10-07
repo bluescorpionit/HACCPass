@@ -48,6 +48,10 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
+                <!-- Schema attuale (generato nei PDF da Prompt 9 in poi). -->
+                <data android:scheme="haccpass" android:host="equipment"/>
+                <!-- Schema storico: mantenuto per compatibilità con i QR
+                     già stampati nei test. NON rimuovere. -->
                 <data android:scheme="bluehaccp" android:host="equipment"/>
             </intent-filter>
         </activity>

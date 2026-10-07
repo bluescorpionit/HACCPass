@@ -1585,18 +1585,105 @@ class HaccpRepository {
     };
   }
 
+  /// Elimina il record; il FILE (e la miniatura) solo se nessun altro
+  /// record lo referenzia: un documento condiviso da più merci resta finché
+  /// serve a qualcuna.
   Future<void> deleteAttachment(int id, {String? localPath}) async {
+    String? sharedPath;
+    String? thumbPath;
     await _write(() async {
+      final rows = await _db.query('attachments',
+          where: 'id = ?', whereArgs: [id], limit: 1);
+      if (rows.isNotEmpty) {
+        sharedPath = rows.first['local_path'] as String?;
+        thumbPath = rows.first['thumb_path'] as String?;
+      }
       await _db.delete('attachments', where: 'id = ?', whereArgs: [id]);
     });
-    if (localPath != null) {
+    final path = localPath ?? sharedPath;
+    if (path == null) return;
+    final remaining = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM attachments WHERE local_path = ? OR '
+      '(thumb_path IS NOT NULL AND thumb_path = ?)',
+      [path, path],
+    );
+    final refs = (remaining.first['n'] as num?)?.toInt() ?? 0;
+    if (refs > 0) return;
+    for (final fileToDelete in [path, thumbPath]) {
+      if (fileToDelete == null) continue;
       try {
-        final file = File(localPath);
+        final file = File(fileToDelete);
         if (await file.exists()) await file.delete();
       } catch (_) {
         // Il file può essere già stato rimosso.
       }
     }
+  }
+
+  /// Primo allegato con la stessa impronta (deduplica), con file esistente
+  /// verificato dal chiamante.
+  Future<Attachment?> findAttachmentBySha(String sha256) async {
+    final rows = await _db.query(
+      'attachments',
+      where: 'sha256 = ? AND offloaded_at IS NULL',
+      whereArgs: [sha256],
+      orderBy: 'id',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return Attachment.fromMap(rows.first);
+  }
+
+  /// Tutti i record che puntano allo stesso file (condivisione/deduplica).
+  Future<List<Attachment>> findAttachmentRefsByPath(String localPath) async {
+    final rows = await _db.query(
+      'attachments',
+      where: 'local_path = ?',
+      whereArgs: [localPath],
+    );
+    return rows.map(Attachment.fromMap).toList();
+  }
+
+  Future<List<Attachment>> getAllAttachments() async {
+    final rows = await _db.query('attachments', orderBy: 'created_at DESC');
+    return rows.map(Attachment.fromMap).toList();
+  }
+
+  /// Allegati locali più grandi (offload esclusi), limitati per la
+  /// schermata "Spazio e allegati".
+  Future<List<Attachment>> getLargestLocalAttachments({int limit = 20}) async {
+    final rows = await _db.query(
+      'attachments',
+      where: 'offloaded_at IS NULL',
+      orderBy: 'size DESC',
+      limit: limit,
+    );
+    return rows.map(Attachment.fromMap).toList();
+  }
+
+  /// File locale rimosso da "Libera spazio": resta record + miniatura +
+  /// riferimento cloud.
+  Future<void> markAttachmentOffloaded(int id) async {
+    await _write(() async {
+      await _db.update(
+        'attachments',
+        {'offloaded_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  /// Il file è stato riscaricato dal cloud: torna locale.
+  Future<void> clearAttachmentOffloaded(int id) async {
+    await _write(() async {
+      await _db.update(
+        'attachments',
+        {'offloaded_at': null},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<void> updateAttachmentSync({
@@ -1643,9 +1730,11 @@ class HaccpRepository {
               "entity_type = 'receipt' AND entity_id = ? AND kind = 'photo'",
           whereArgs: [r.id]);
       for (final row in rows) {
+        final attachment = Attachment.fromMap(row);
         result.add((
-          Attachment.fromMap(row),
-          'Merce respinta: ${r.product} (${r.supplierName})',
+          attachment,
+          'Merce respinta: ${r.product} (${r.supplierName})'
+              '${attachment.isOffloaded ? ' \u2022 allegato su Drive' : ''}',
         ));
       }
     }
@@ -1655,7 +1744,9 @@ class HaccpRepository {
               "entity_type = 'nonconformity' AND entity_id = ? AND kind = 'photo'",
           whereArgs: [nc.id]);
       for (final row in rows) {
-        result.add((Attachment.fromMap(row), 'NC: ${nc.title}'));
+        final attachment = Attachment.fromMap(row);
+        result.add((attachment, 'NC: ${nc.title}'
+            '${attachment.isOffloaded ? ' \u2022 allegato su Drive' : ''}'));
       }
     }
     return result;

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../repositories/haccp_repository.dart';
+import '../services/attachment_service.dart';
 import '../services/backup_service.dart';
 import '../services/license_service.dart';
 import '../services/sync_service.dart';
@@ -15,6 +16,7 @@ import 'license_screen.dart';
 import 'modules/extra_screens.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'sensors/sensor_diagnostics_screen.dart';
+import 'storage/attachment_storage_screen.dart';
 import 'staff/staff_screen.dart';
 import 'temperature/equipment_editor.dart';
 
@@ -133,6 +135,20 @@ class MoreScreen extends StatelessWidget {
         'Stato prova, acquisti e chiave offline',
         Icons.key_outlined,
         () => _push(context, LicenseScreen(license: license)),
+      ),
+      // Prompt 8: spazio e sicurezza degli allegati.
+      (
+        'Spazio e allegati',
+        'Foto, PDF, spazio usato e "Libera spazio"',
+        Icons.photo_library_outlined,
+        () => _push(
+          context,
+          AttachmentStorageScreen(
+            repository: repository,
+            attachments: AttachmentService(repository: repository),
+            cloud: null,
+          ),
+        ),
       ),
       // FASE 0 sensori Govee: voce visibile SOLO nelle build di debug.
       if (kDebugMode)

@@ -9,6 +9,10 @@ import 'package:sqflite/sqflite.dart';
 /// sicurezza alimentare, contaminazione crociata, donazioni.
 ///
 /// Migrazioni con `onUpgrade`: nessun dato viene cancellato.
+/// Versione corrente dello schema del database (riportata nel manifest
+/// dei backup).
+const int appDatabaseVersion = 6;
+
 class AppDatabase {
   /// [path] \u00E8 usato nei test per puntare a un file dedicato.
   AppDatabase({String? path}) : _pathOverride = path;
@@ -40,13 +44,16 @@ class AppDatabase {
   Future<void> initialize() async {
     _configureDatabaseFactoryIfNeeded();
 
+    // 'blue_haccp.db': nome storico del file database, NON cambiare
+    // (compatibilità dati: i dispositivi di prova e i backup esistenti
+    // puntano a questo file nella cartella privata dell'app).
     final path = _pathOverride ??
         join(await getDatabasesPath(), 'blue_haccp.db');
     _path = path;
 
     _db = await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -71,15 +78,20 @@ class AppDatabase {
 
   Future<void> _onOpen(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
-    // Retention letture sensori: 90 giorni (potatura all'avvio).
-    final cutoff = DateTime.now()
-        .subtract(const Duration(days: 90))
-        .millisecondsSinceEpoch;
-    await database.delete(
-      'sensor_readings',
-      where: 'ts < ?',
-      whereArgs: [cutoff],
-    );
+    try {
+      // Retention letture sensori: 90 giorni (potatura all'avvio).
+      final cutoff = DateTime.now()
+          .subtract(const Duration(days: 90))
+          .millisecondsSinceEpoch;
+      await database.delete(
+        'sensor_readings',
+        where: 'ts < ?',
+        whereArgs: [cutoff],
+      );
+    } catch (_) {
+      // Tabella assente (fixture minimale o migrazione parziale): la
+      // potatura riproverà alla prossima apertura.
+    }
   }
 
   Future<void> _onCreate(Database database, int version) async {
@@ -87,6 +99,7 @@ class AppDatabase {
     await _createV3Tables(database);
     await _createV4Tables(database);
     await _createV5Tables(database);
+    await _createV6Tables(database);
     await _seed(database);
     await _insertV4Defaults(database);
   }
@@ -103,6 +116,9 @@ class AppDatabase {
     }
     if (oldVersion < 5) {
       await _migrateV4toV5(database);
+    }
+    if (oldVersion < 6) {
+      await _migrateV5toV6(database);
     }
   }
 
@@ -193,6 +209,31 @@ class AppDatabase {
 
   Future<void> _migrateV4toV5(Database database) async {
     await _createV5Tables(database);
+  }
+
+  /// V6: spazio e sicurezza degli allegati (Prompt 8, parte B). Colonne su
+  /// `attachments` per deduplica (sha256), miniature (thumb_path), misure
+  /// (width/height) e file liberato dopo verifica cloud (offloaded_at).
+  /// Nessun dato esistente viene toccato.
+  Future<void> _createV6Tables(Database database) async {
+    if (!await _tableExists(database, 'attachments')) return;
+    await _addColumn(database, 'attachments', 'sha256', 'TEXT');
+    await _addColumn(database, 'attachments', 'thumb_path', 'TEXT');
+    await _addColumn(database, 'attachments', 'width', 'INTEGER');
+    await _addColumn(database, 'attachments', 'height', 'INTEGER');
+    await _addColumn(database, 'attachments', 'offloaded_at', 'TEXT');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_attachments_sha256 '
+      'ON attachments(sha256)',
+    );
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_attachments_created '
+      'ON attachments(created_at)',
+    );
+  }
+
+  Future<void> _migrateV5toV6(Database database) async {
+    await _createV6Tables(database);
   }
 
   Future<void> _createV4Tables(Database database) async {

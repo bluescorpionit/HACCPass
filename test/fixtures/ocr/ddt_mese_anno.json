@@ -1,0 +1,12 @@
+{
+  "nome": "DDT con scadenza mese/anno (mm/aaaa)",
+  "lines": [
+    {"text": "MARCHETTI SOCIETA' AGRICOLA", "box": [80, 42, 690, 95], "confidence": 0.93},
+    {"text": "P.IVA 02345678904", "box": [80, 120, 310, 136], "confidence": 0.91},
+    {"text": "DDT n. 90", "box": [80, 160, 240, 176], "confidence": 0.9},
+    {"text": "Data 02/10/2026", "box": [80, 184, 280, 200], "confidence": 0.92},
+    {"text": "Descrizione      Lotto    Scad.   Q.tà  UM", "box": [80, 290, 880, 308], "confidence": 0.88},
+    {"text": "Pesche nettarine PE2210 11/2027 4,500 KG", "box": [80, 318, 880, 338], "confidence": 0.87},
+    {"text": "Susine sciroppate SS0912 03/2028 2,000 KG", "box": [80, 348, 880, 368], "confidence": 0.86}
+  ]
+}

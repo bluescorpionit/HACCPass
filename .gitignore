@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firma di release (Prompt 9): NESSUN segreto nel repository.
+android/key.properties
+*.jks
+*.keystore

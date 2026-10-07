@@ -1,0 +1,10 @@
+{
+  "nome": "DDT senza tabella: righe multiple con etichette lotto/scadenza/quantità",
+  "lines": [
+    {"text": "FRATELLI ESPOSITO SRL", "box": [100, 45, 680, 96], "confidence": 0.95},
+    {"text": "Documento di trasporto n. 1002", "box": [100, 150, 520, 167], "confidence": 0.91},
+    {"text": "Data documento 07/10/2026", "box": [100, 175, 380, 191], "confidence": 0.93},
+    {"text": "Lotto LT2341 Scadenza 10/04/2027 Quantità 6,000 KG", "box": [100, 320, 820, 338], "confidence": 0.87},
+    {"text": "Lotto AB8890 Scadenza 22/02/2027 Quantità 12 PZ", "box": [100, 350, 820, 368], "confidence": 0.86}
+  ]
+}

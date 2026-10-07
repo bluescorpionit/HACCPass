@@ -1,0 +1,13 @@
+{
+  "nome": "DDT con lotto e scadenza scritti sotto la descrizione",
+  "lines": [
+    {"text": "ALIMENTARI BIANCHI SRL", "box": [90, 40, 640, 90], "confidence": 0.94},
+    {"text": "DDT n. 77", "box": [90, 130, 260, 148], "confidence": 0.91},
+    {"text": "Data 05/10/2026", "box": [90, 155, 280, 172], "confidence": 0.92},
+    {"text": "Descrizione     Lotto    Scad.    Q.tà", "box": [90, 250, 860, 268], "confidence": 0.89},
+    {"text": "Salame felino stagionato", "box": [90, 280, 500, 298], "confidence": 0.9},
+    {"text": "Lotto SL8421 02/04/2027 8 KG", "box": [90, 305, 700, 323], "confidence": 0.88},
+    {"text": "Culatello di Zibello", "box": [90, 350, 460, 368], "confidence": 0.89},
+    {"text": "L. CZ1180 21/12/2026 4,000 KG", "box": [90, 375, 700, 393], "confidence": 0.87}
+  ]
+}

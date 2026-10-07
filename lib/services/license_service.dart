@@ -7,10 +7,12 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import '../core/license/license_codec.dart';
 import '../screens/license_screen.dart';
 
-/// ID prodotto configurabili per gli acquisti in-app.
+/// ID prodotto configurabili per gli acquisti in-app (allineati
+/// all'identificativo definitivo dell'app, Prompt 9). Vanno creati
+/// identici su Play Console e App Store Connect.
 class LicenseProductIds {
-  static const String annual = 'dev.bluehaccp.app.annual';
-  static const String lifetime = 'dev.bluehaccp.app.lifetime';
+  static const String annual = 'it.bluescorpion.haccpass.annual';
+  static const String lifetime = 'it.bluescorpion.haccpass.lifetime';
   static const Set<String> all = {annual, lifetime};
 }
 
@@ -22,7 +24,27 @@ class LicenseService extends ChangeNotifier {
     required Future<void> Function(String key, String value) writeSetting,
   })  : _readSetting = readSetting,
         _writeSetting = writeSetting,
-        codec = LicenseCodec(secret: appSecret);
+        codec = LicenseCodec(secret: appSecret) {
+    // Un segreto vuoto renderebbe forgiabili le chiavi offline: in
+    // release l'app si rifiuta di partire (build/avvio esplicito),
+    // in debug resta consentito con avviso.
+    if (kReleaseMode && appSecret.isEmpty) {
+      throw StateError(
+        'BH_LICENSE_SECRET mancante: build di release senza segreto di '
+        'licenza. Ricompila con --dart-define=BH_LICENSE_SECRET=<valore> '
+        '(vedi docs/identificativi.md).',
+      );
+    }
+    assert(() {
+      if (appSecret.isEmpty) {
+        debugPrint(
+          'AVVISO: BH_LICENSE_SECRET vuoto (consentito solo in debug): le '
+          'chiavi offline NON sono sicure.',
+        );
+      }
+      return true;
+    }());
+  }
 
   /// Segreto per la verifica offline delle chiavi.
   /// Passare in build: --dart-define=BH_LICENSE_SECRET=...

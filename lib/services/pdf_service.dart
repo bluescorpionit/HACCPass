@@ -479,7 +479,13 @@ class PdfService {
               horizontalRadius: 6,
               verticalRadius: 6,
               child: pw.Image(
-                pw.MemoryImage(File(attachment.localPath).readAsBytesSync()),
+                // Allegati "solo su Drive": miniatura locale + dicitura,
+                // mai errori né riquadri vuoti.
+                pw.MemoryImage(File(
+                  File(attachment.localPath).existsSync()
+                      ? attachment.localPath
+                      : attachment.previewPath,
+                ).readAsBytesSync()),
                 width: 150,
                 height: 100,
                 fit: pw.BoxFit.cover,
@@ -1642,7 +1648,9 @@ class PdfService {
   Future<Uint8List> buildEquipmentQrLabel(Equipment equipment) async {
     await _loadFonts();
     final company = await repository.getCompany();
-    final code = 'bluehaccp://equipment/${equipment.id}';
+    // Schema attuale haccpass:// (lo storico bluehaccp:// resta VALIDO nel
+    // gestore per i QR già stampati: vedi lib/core/deep_links.dart).
+    final code = 'haccpass://equipment/${equipment.id}';
 
     final pageFormat = PdfPageFormat(
       62 * PdfPageFormat.mm,

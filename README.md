@@ -189,10 +189,22 @@ dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetim
 
 ### Google Play
 
-`applicationId` definitivo (oggi `com.example.blue_haccp`), firma di release
-+ Play App Signing con SHA-1 registrate in Google Cloud, scheda Sicurezza
+Identificativo definitivo **`it.bluescorpion.haccpass`** (già configurato),
+firma di release tramite `android/key.properties` NON versionato (senza il
+file la build di release fallisce con messaggio chiaro: procedura keystore
+e impronte SHA-1/SHA-256 in [`docs/identificativi.md`](docs/identificativi.md)),
+Play App Signing con SHA-1 registrate in Google Cloud, scheda Sicurezza
 dei dati coerente (dati solo locali e nel cloud del cliente), foto picker di
 sistema (nessun permesso galleria), `POST_NOTIFICATIONS` dichiarato.
+
+### Acquisti in-app
+
+ID prodotto allineati all'identificativo: `it.bluescorpion.haccpass.annual`
+(abbonamento) e `it.bluescorpion.haccpass.lifetime` (a vita, mantenuto nel
+codice: creare solo l'annuale se il modello definitivo resta 39 €/anno).
+Build di release SEMPRE con `--dart-define=BH_LICENSE_SECRET=<valore>`:
+con segreto vuoto l'app si rifiuta di avviarsi. QR attrezzature: schema
+attuale `haccpass://`, lo storico `bluehaccp://` resta valido.
 
 ## Struttura
 
@@ -268,6 +280,23 @@ sensore non è mai presentato come strumento tarato. Architettura a
 modelli (`lib/core/sensors/`): nuovi modelli futuri = una classe + una
 riga nel registry. Funzione opzionale: l'app resta pienamente utilizzabile
 senza sensori e senza permessi Bluetooth.
+
+## Lettura documenti (OCR) e spazio allegati
+
+"Scansiona documento" in Merce in arrivo legge fornitore, numero, data e
+righe (lotto, scadenza, quantità) da foto o PDF di DDT/fatture con
+**ML Kit, interamente sul telefono** (nessuna rete): schermata di verifica
+con campi incerti evidenziati, coda di registrazioni precompilate, documento
+allegato a tutte le merci create senza duplicare il file (SHA-256). Dettagli
+e limiti in [`docs/ocr.md`](docs/ocr.md).
+
+Gli allegati (foto ~1600 px o PDF) vivono nella cartella privata
+dell'app: la schermata **Altro → Spazio e allegati** mostra spazio usato,
+file più grandi e allegati non ancora al sicuro su Google Drive, con
+profili di qualità foto, "Libera spazio" (solo file già verificati sul
+cloud) e controllo integrità. Il backup del database non include le foto:
+c'è l'opzione "Backup completo con allegati" in streaming. Dettagli in
+[`docs/allegati.md`](docs/allegati.md).
 
 ## Prima della pubblicazione
 

@@ -3,12 +3,13 @@ import 'dart:io';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
-
+import 'package:flutter/foundation.dart';
 import 'cloud_storage.dart';
 
 /// Scope minimo: l'app vede solo i file che crea o che il cliente le apre.
 /// Non usare scope pi\u00F9 ampi: richiederebbero la verifica di sicurezza.
 const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
+
 
 /// Archivio nel Google Drive **personale** del cliente.
 ///
@@ -16,6 +17,9 @@ const String driveFileScope = 'https://www.googleapis.com/auth/drive.file';
 /// il cliente ritrova i suoi file da qualsiasi dispositivo.
 /// Serve solo come archivio: mai "Accedi con Google" (guideline 4.8 Apple).
 class GoogleDriveProvider extends CloudStorageProvider {
+  static const _serverClientId =
+    String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+
   GoogleDriveProvider();
 
   final GoogleSignIn _signIn = GoogleSignIn.instance;
@@ -39,9 +43,12 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
   Future<void> _initSignIn() async {
     try {
-      await _signIn.initialize();
-    } on Exception {
-      // Gi\u00E0 inizializzato: sicuro ignorare.
+      //await _signIn.initialize();
+      await _signIn.initialize(
+        serverClientId: _serverClientId.isEmpty ? null : _serverClientId,
+      );
+    } on Exception catch (e) {
+      debugPrint('Drive initialize: $e');
     }
   }
 
@@ -63,7 +70,8 @@ class GoogleDriveProvider extends CloudStorageProvider {
       _api = drive.DriveApi(client);
       _folderIds.clear();
       return true;
-    } catch (e) {
+    } catch (e, st) {
+       debugPrint('Drive connect fallito: $e\n$st');
       _api = null;
       return false;
     }

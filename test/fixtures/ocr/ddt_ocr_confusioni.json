@@ -1,0 +1,12 @@
+{
+  "nome": "DDT con confusioni OCR in contesto numerico (O/0, S/5, B/8, I/1)",
+  "lines": [
+    {"text": "SAPORI DEL SUD SRL", "box": [95, 48, 660, 96], "confidence": 0.94},
+    {"text": "P.IVA O234S67B9O4", "box": [95, 125, 350, 141], "confidence": 0.85},
+    {"text": "DDT n. 45O2", "box": [95, 162, 280, 178], "confidence": 0.88},
+    {"text": "Data O5.1O.2O26", "box": [95, 186, 300, 202], "confidence": 0.84},
+    {"text": "Descrizione    Lotto   Scad.   Q.tà  UM", "box": [95, 295, 890, 313], "confidence": 0.87},
+    {"text": "Bocconcini di mozzarella L2231 1S/02/2O27 2,5OO KG", "box": [95, 322, 890, 342], "confidence": 0.8},
+    {"text": "Burrata B3308 2O/1O/2O26 S,OOO PZ", "box": [95, 352, 890, 372], "confidence": 0.79}
+  ]
+}

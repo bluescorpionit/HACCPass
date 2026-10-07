@@ -1093,6 +1093,11 @@ class Attachment {
     this.cloudId,
     this.syncedAt,
     this.note,
+    this.sha256,
+    this.thumbPath,
+    this.width,
+    this.height,
+    this.offloadedAt,
   });
 
   final int id;
@@ -1110,7 +1115,27 @@ class Attachment {
   final DateTime? syncedAt;
   final String? note;
 
+  /// Impronta SHA-256 del contenuto: alla base della deduplica (lo stesso
+  /// documento collegato a più merci non duplica il file).
+  final String? sha256;
+
+  /// Miniatura 256 px (solo foto): usata nelle liste e quando il file
+  /// locale è stato liberato.
+  final String? thumbPath;
+  final int? width;
+  final int? height;
+
+  /// File locale rimosso da "Libera spazio" perché verificato sul cloud:
+  /// resta record, miniatura e riferimento Drive.
+  final DateTime? offloadedAt;
+
   bool get isPhoto => kind == 'photo';
+
+  /// true se il file locale non c'è più e resta solo la copia cloud.
+  bool get isOffloaded => offloadedAt != null;
+
+  /// Percorso da usare per anteprima/miniature: la thumb quando esiste.
+  String get previewPath => thumbPath ?? localPath;
 
   factory Attachment.fromMap(Map<String, Object?> map) => Attachment(
         id: map.integer('id'),
@@ -1125,6 +1150,11 @@ class Attachment {
         cloudId: map.strOrNull('cloud_id'),
         syncedAt: map.dt('synced_at'),
         note: map.strOrNull('note'),
+        sha256: map.strOrNull('sha256'),
+        thumbPath: map.strOrNull('thumb_path'),
+        width: map.intOrNull('width'),
+        height: map.intOrNull('height'),
+        offloadedAt: map.dt('offloaded_at'),
       );
 
   Map<String, Object?> toMap() => {
@@ -1139,6 +1169,11 @@ class Attachment {
         'cloud_id': cloudId,
         'synced_at': syncedAt?.toIso8601String(),
         'note': note,
+        'sha256': sha256,
+        'thumb_path': thumbPath,
+        'width': width,
+        'height': height,
+        'offloaded_at': offloadedAt?.toIso8601String(),
       };
 }
 

@@ -1,11 +1,19 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firma di release: dati NON versionati in android/key.properties
+// (storeFile, storePassword, keyAlias, keyPassword). Nessun segreto nel
+// repository: key.properties/*.jks/*.keystore sono nel .gitignore.
+val keystorePropertiesFile = rootProject.file("key.properties")
+
 android {
-    namespace = "com.example.blue_haccp"
+    namespace = "it.bluescorpion.haccpass"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,8 +25,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.blue_haccp"
+        applicationId = "it.bluescorpion.haccpass"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -27,12 +34,49 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                val keystoreProperties = Properties()
+                keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // Regole per ML Kit (solo script Latin incluso): vedi
+            // proguard-rules.pro.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
+    }
+}
+
+// La firma di release si verifica SOLO quando una build di release è
+// effettivamente pianificata (il blocco buildTypes è valutato anche per
+// il debug): senza key.properties si fallisce con messaggio chiaro, MAI
+// con un ripiego sulla chiave di debug.
+gradle.taskGraph.whenReady {
+    val buildingRelease = allTasks.any {
+        it.name.contains("Release", ignoreCase = true)
+    }
+    if (buildingRelease && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "Impossibile firmare la build di release: manca " +
+                "android/key.properties. Crea la keystore di upload e " +
+                "compila storeFile/storePassword/keyAlias/keyPassword " +
+                "(procedura in docs/identificativi.md)."
+        )
     }
 }
 

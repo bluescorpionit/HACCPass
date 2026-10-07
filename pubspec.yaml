@@ -42,6 +42,7 @@ dependencies:
   # Factory FFI del DB: necessaria a runtime su desktop (Windows/Linux).
   sqflite_common_ffi: ^2.4.3
   flutter_blue_plus: ^2.3.14
+  google_mlkit_text_recognition: ^0.17.1
 
 dev_dependencies:
   flutter_test:

@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
@@ -17,10 +18,18 @@ import 'cloud/cloud_storage.dart';
 /// Facoltativamente cifrato con AES-256-GCM e chiave derivata con PBKDF2:
 /// la password non viene mai salvata.
 class BackupService {
-  BackupService({required this.repository, required this.appVersion});
+  BackupService({
+    required this.repository,
+    required this.appVersion,
+    this.attachmentsRootOverride,
+  });
 
   final HaccpRepository repository;
   final String appVersion;
+
+  /// Radice degli allegati iniettabile per i test (in produzione si usa
+  /// la cartella documenti privata dell'app).
+  final String? attachmentsRootOverride;
 
   static const magic = 'BHB1';
   static const _saltLength = 16;
@@ -38,9 +47,17 @@ class BackupService {
 
   AppDatabase get _database => repository.database;
 
+  /// Versione reale dello schema del database (per il manifest).
+  Future<int> _schemaVersion() async {
+    final db = _database.db;
+    if (!db.isOpen) return appDatabaseVersion;
+    return db.getVersion();
+  }
+
   /// Crea il file di backup (chiusura coerente del DB, copia, manifest,
   /// cifra facoltativa). Restituisce il percorso del file pronto.
   Future<String> createBackup({String? password}) async {
+    final schemaVersion = await _schemaVersion();
     await repository.closeForBackup();
     try {
       final dbPath = _database.path;
@@ -50,6 +67,8 @@ class BackupService {
       final zipEncoder = ZipEncoder();
       final archive = Archive()
         ..addFile(
+          // 'blue_haccp.db': nome storico del file database, NON cambiare
+          // (compatibilità con i backup esistenti).
           ArchiveFile(
             'blue_haccp.db',
             dbBytes.length,
@@ -60,7 +79,7 @@ class BackupService {
       final dbHash = (await _sha256.hash(dbBytes)).bytes;
       final manifest = {
         'format': magic,
-        'schemaVersion': 3,
+        'schemaVersion': schemaVersion,
         'appVersion': appVersion,
         'createdAt': DateTime.now().toIso8601String(),
         'dbSha256': dbHash
@@ -86,6 +105,120 @@ class BackupService {
       await _database.initialize();
       repository.revision.value++;
     }
+  }
+
+  /// Backup COMPLETO con allegati (Prompt 8, B4): scrittura in streaming
+  /// su disco (ZipFileEncoder), un file alla volta: nessun picco di
+  /// memoria anche con centinaia di foto. NON cifrabile (la cifratura
+  /// attuale richiede l'archivio intero in RAM): il backup cifrato resta
+  /// limitato al database e l'interfaccia lo dichiara.
+  ///
+  /// [onProgress] riceve (file scritti, file totali); [olderThan] limita
+  /// gli allegati all'intervallo scelto (null = tutto). Restituisce null
+  /// se annullato dal callback [shouldCancel] (file parziale eliminato).
+  Future<String?> createFullBackup({
+    Duration? attachmentsOlderThan,
+    void Function(int done, int total)? onProgress,
+    bool Function()? shouldCancel,
+  }) async {
+    final schemaVersion = await _schemaVersion();
+    final attachmentsRoot = await _attachmentsRootPath();
+
+    // Elenco dei file da includere PRIMA di chiudere il DB.
+    final files = <File>[];
+    if (await Directory(attachmentsRoot).exists()) {
+      await for (final entry
+          in Directory(attachmentsRoot).list(recursive: true)) {
+        if (entry is File) {
+          if (attachmentsOlderThan != null) {
+            final stat = await entry.stat();
+            if (stat.modified
+                .isBefore(DateTime.now().subtract(attachmentsOlderThan))) {
+              continue;
+            }
+          }
+          files.add(entry);
+        }
+      }
+    }
+    final total = files.length;
+
+    await repository.closeForBackup();
+    final dir = await Directory.systemTemp.createTemp('bh_backup_full');
+    final destination =
+        p.join(dir.path, 'HACCPass_backup_completo_${_timestamp()}.bhb');
+    final encoder = ZipFileEncoder()..create(destination);
+    var closed = false;
+    try {
+      encoder.addFileSync(File(_database.path), 'blue_haccp.db');
+
+      final manifest = {
+        'format': magic,
+        'schemaVersion': schemaVersion,
+        'appVersion': appVersion,
+        'createdAt': DateTime.now().toIso8601String(),
+        'attachments': true,
+        'attachmentsCount': files.length,
+      };
+      final manifestFile = File(p.join(dir.path, 'manifest.json'))
+        ..writeAsStringSync(jsonEncode(manifest), flush: true);
+      encoder.addFileSync(manifestFile, 'manifest.json');
+
+      var done = 0;
+      for (final file in files) {
+        if (shouldCancel?.call() ?? false) {
+          await encoder.close();
+          closed = true;
+          await File(destination).delete();
+          return null;
+        }
+        final relative = p.relative(file.path, from: attachmentsRoot);
+        encoder.addFileSync(file, p.posix.join('attachments', relative));
+        done++;
+        onProgress?.call(done, total);
+      }
+      return destination;
+    } finally {
+      if (!closed) await encoder.close();
+      await _database.initialize();
+      repository.revision.value++;
+    }
+  }
+
+  /// Ripristina gli allegati di un backup completo: copia i file (uno alla
+  /// volta, streaming) nella cartella allegati. Il database va ripristinato
+  /// prima con [restoreBackup]. Gli allegati cifrati non sono previsti (i
+  /// backup completi non sono cifrabili).
+  Future<int> restoreAttachments(
+    String backupPath, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final input = InputFileStream(backupPath);
+    final archive = ZipDecoder().decodeStream(input);
+    final attachmentsRoot = await _attachmentsRootPath();
+    final entries = archive.files
+        .where((f) => !f.isFile ? false : f.name.startsWith('attachments/'))
+        .toList();
+    var done = 0;
+    for (final entry in entries) {
+      final relative = entry.name.substring('attachments/'.length);
+      final destination = p.join(attachmentsRoot, relative);
+      await Directory(p.dirname(destination)).create(recursive: true);
+      final output = OutputFileStream(destination);
+      entry.writeContent(output);
+      await output.close();
+      done++;
+      onProgress?.call(done, entries.length);
+    }
+    await input.close();
+    return entries.length;
+  }
+
+  Future<String> _attachmentsRootPath() async {
+    final override = attachmentsRootOverride;
+    if (override != null) return override;
+    final root = await getApplicationDocumentsDirectory();
+    return p.join(root.path, 'attachments');
   }
 
   Future<Uint8List> _encrypt(Uint8List plaintext, String password) async {
@@ -167,7 +300,7 @@ class BackupService {
     }
 
     final schemaVersion = (manifest['schemaVersion'] as num?)?.toInt() ?? 0;
-    if (schemaVersion > 3) {
+    if (schemaVersion > appDatabaseVersion) {
       throw BackupException(
         'Il backup \u00E8 stato creato con una versione pi\u00F9 recente '
         'dell\u2019app: aggiorna HACCPass prima di ripristinarlo.',

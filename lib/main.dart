@@ -325,6 +325,12 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     SensorService.instance.attachSink(
       (sample) => unawaited(widget.repository.handleSensorReading(sample)),
     );
+    // Allegati (Prompt 8): pulizia in background dei temporanei abbandonati
+    // (registrazioni mai completate) più vecchi di 24 ore.
+    unawaited(
+      AttachmentService(repository: widget.repository)
+          .cleanupStalePending(),
+    );
     _bootstrap();
   }
 
