@@ -182,6 +182,17 @@ class LicenseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ricarica lo stato dal database dopo un ripristino (Prompt 12, §C):
+  /// le impostazioni di licenza sono state sanificate dal
+  /// [RestoreService] (mai importate dal backup) e vanno rilette con la
+  /// rivalutazione dell'ancora della prova.
+  Future<void> reloadAfterRestore() async {
+    await _loadState();
+    await _verifyEntitlement();
+    loading = false;
+    notifyListeners();
+  }
+
   /// Alla ripresa dell'app: aggiorna `lastSeen` dell'ancora e ricontrolla
   /// l'orologio (Prompt 10, A).
   Future<void> onAppResumed() async {
@@ -221,12 +232,29 @@ class LicenseService extends ChangeNotifier {
     expiresAt = DateTime.tryParse(expRaw ?? '');
     customerCode = await _readSetting('license_customer') ?? '';
     iapActive = await _readSetting('iap_active') == '1';
-    iapVerifiedAt =
-        DateTime.tryParse(await _readSetting('iap_verified_at') ?? '');
+    iapVerifiedAt = _trustedVerifiedAt(
+      DateTime.tryParse(await _readSetting('iap_verified_at') ?? ''),
+    );
 
     switch (storedKind) {
       case 'offline':
-        kind = LicenseKind.offline;
+        // Prompt 12, §C: le righe di licenza del database NON sono
+        // credute (un backup manomesso potrebbe contenere una licenza a
+        // vita gratis): scadenza e codice cliente si derivano SOLO
+        // dalla chiave, rivalidata con HMAC a ogni caricamento.
+        final key = await _readSetting('license_key');
+        final info = key == null ? null : codec.tryParse(key);
+        if (info != null && info.isValid) {
+          kind = LicenseKind.offline;
+          expiresAt = info.expiresAt;
+          customerCode = info.customerCode;
+        } else {
+          // Chiave assente o non valida: stato prova (scaduta se la
+          // prova è finita), mai la licenza scritta nel database.
+          kind = LicenseKind.trial;
+          expiresAt = null;
+          customerCode = '';
+        }
       case 'iap':
         kind = LicenseKind.iap;
       case 'debug':
@@ -236,6 +264,17 @@ class LicenseService extends ChangeNotifier {
     }
 
     _applyPriority();
+  }
+
+  /// `iap_verified_at` è creduto solo se non è nel futuro (orologio
+  /// alterato o riga manomessa: Prompt 12, §C) e non oltre la tolleranza
+  /// offline. Valori oltre i limiti valgono come "da verificare".
+  DateTime? _trustedVerifiedAt(DateTime? value) {
+    if (value == null) return null;
+    final now = DateTime.now();
+    if (value.isAfter(now.add(const Duration(minutes: 5)))) return null;
+    if (now.difference(value) > offlineTolerance) return null;
+    return value;
   }
 
   /// Priorità: chiave offline valida > abbonamento attivo (anche in

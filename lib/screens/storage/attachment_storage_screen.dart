@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/haccp_models.dart';
 import '../../repositories/haccp_repository.dart';
+import '../../services/attachment_recovery_service.dart';
 import '../../services/attachment_service.dart';
 import '../../services/cloud/cloud_storage.dart';
 import '../../widgets/common_widgets.dart';
+import '../recovery/photo_recovery_screen.dart';
 
 /// Prompt 8, B2: "Spazio e allegati" (Altro → Backup/Archivio).
 ///
@@ -180,6 +182,13 @@ class _AttachmentStorageScreenState extends State<AttachmentStorageScreen> {
                               'Collega Google Drive per metterli al sicuro.',
                           type: StatusType.info,
                           large: true,
+                        ),
+                      ],
+                      if (cloudConnected) ...[
+                        const SizedBox(height: 8),
+                        _MissingPhotosSection(
+                          repository: widget.repository,
+                          cloud: widget.cloud,
                         ),
                       ],
                     ],
@@ -527,6 +536,81 @@ class _RepairSection extends StatefulWidget {
 
   @override
   State<_RepairSection> createState() => _RepairSectionState();
+}
+
+/// "Foto non ancora scaricate" (Prompt 12, §D.3): conteggio locale degli
+/// allegati senza file (nessuna rete richiesta) e accesso al recupero.
+class _MissingPhotosSection extends StatefulWidget {
+  const _MissingPhotosSection({
+    required this.repository,
+    required this.cloud,
+  });
+
+  final HaccpRepository repository;
+  final CloudStorageProvider? cloud;
+
+  @override
+  State<_MissingPhotosSection> createState() => _MissingPhotosSectionState();
+}
+
+class _MissingPhotosSectionState extends State<_MissingPhotosSection> {
+  Future<int>? _missing;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    final cloud = widget.cloud;
+    if (cloud == null || !cloud.isConnected) {
+      _missing = Future.value(0);
+      return;
+    }
+    _missing = AttachmentRecoveryService(
+      repository: widget.repository,
+      cloud: cloud,
+    ).missingLocalAttachments().then((list) => list.length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<int>(
+      future: _missing,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done ||
+            snapshot.hasError) {
+          return const SizedBox.shrink();
+        }
+        final missing = snapshot.data ?? 0;
+        if (missing == 0) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            StatusPill(
+              text: '$missing foto non ancora scaricate',
+              type: StatusType.info,
+              large: true,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => PhotoRecoveryScreen(
+                    repository: widget.repository,
+                    cloud: widget.cloud!,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Recupera foto'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _RepairSectionState extends State<_RepairSection> {

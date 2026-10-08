@@ -11,14 +11,22 @@ import 'core/sensors/ble_sensor_source.dart';
 import 'core/theme/app_theme.dart';
 import 'repositories/haccp_repository.dart';
 import 'screens/app_shell.dart';
+import 'screens/first_run_choice_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/restore_wizard_screen.dart';
 import 'services/attachment_service.dart';
 import 'services/backup_service.dart';
 import 'services/cloud/google_drive_provider.dart';
+import 'services/daily_backup.dart';
 import 'services/license_service.dart';
 import 'services/printer_service.dart';
 import 'services/reminder_service.dart';
+import 'services/restore_service.dart';
 import 'services/sync_service.dart';
+
+/// Messenger radice: i messaggi fuori da uno Scaffold (es. invito al
+/// ripristino dal controllo del backup automatico) passano da qui.
+final rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 /// Servizi dell'app inizializzati in background mentre la splash \u00E8
 /// visibile.
@@ -145,6 +153,7 @@ class HaccpassApp extends StatelessWidget {
       ],
       supportedLocales: const [Locale('it', 'IT')],
       locale: const Locale('it', 'IT'),
+      scaffoldMessengerKey: rootMessengerKey,
       builder: (context, child) {
         // Barre di sistema coerenti col tema (edge-to-edge): icone scure su
         // sfondo chiaro e viceversa, barre trasparenti.
@@ -319,6 +328,7 @@ class _Root extends StatefulWidget {
 
 class _RootState extends State<_Root> with WidgetsBindingObserver {
   var _onboarding = true;
+  var _firstRunChoice = false;
   var _dailyBackupDone = false;
 
   @override
@@ -347,6 +357,12 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
 
   Future<void> _bootstrap() async {
     _onboarding = !await widget.repository.isOnboardingDone();
+    // Prompt 12, §A: scelta "Nuova attività / Ripristina" SOLO al primo
+    // avvio con database vuoto e scelta non ancora fatta.
+    final choiceDone =
+        await widget.repository.getSetting('first_run_choice_done') == '1';
+    _firstRunChoice =
+        _onboarding && !choiceDone && await widget.repository.isDatabaseEmpty();
     if (mounted) setState(() {});
     await _onAppResumed();
 
@@ -362,53 +378,106 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     }
   }
 
-  /// Al ritorno in primo piano: svuota la coda di caricamento cloud e
-  /// aggiorna l'ancora della prova (lastSeen / rilevamento orologio).
+  /// Al ritorno in primo piano: svuota la coda di caricamento cloud,
+  /// aggiorna l'ancora della prova (lastSeen / rilevamento orologio) e
+  /// valuta il backup automatico giornaliero.
   Future<void> _onAppResumed() async {
     unawaited(widget.license.onAppResumed());
     await widget.sync.processQueue();
+    await _maybeDailyBackup();
+  }
+
+  /// Scelta "Nuova attività" (o "Più tardi"): prosegue col wizard.
+  Future<void> _startOnboardingFromChoice() async {
+    await widget.repository.setSetting('first_run_choice_done', '1');
+    if (mounted) setState(() => _firstRunChoice = false);
+  }
+
+  /// Scelta "Ripristina i miei dati": apre il wizard di ripristino
+  /// (Prompt 12, §A).
+  Future<void> _startRestoreFromChoice() async {
+    await widget.repository.setSetting('first_run_choice_done', '1');
+    if (!mounted) return;
+    setState(() => _firstRunChoice = false);
+    final result = await Navigator.of(context).push<RestoreResult>(
+      MaterialPageRoute(
+        builder: (_) => RestoreWizardScreen(
+          repository: widget.repository,
+          backup: widget.backup,
+          license: widget.license,
+          sync: widget.sync,
+        ),
+      ),
+    );
+    await _onRestoreFinished(result);
+  }
+
+  /// Dopo il ripristino: se il database ripristinato ha
+  /// `onboarding_done = '1'` si apre direttamente la shell, altrimenti
+  /// il wizard riprende dal passo salvato. I promemoria vengono
+  /// riprogrammati sui dati ripristinati.
+  Future<void> _onRestoreFinished(RestoreResult? result) async {
+    if (result == null) return;
+    await widget.reminders.rescheduleAll();
+    if (!mounted) return;
+    setState(() {
+      _onboarding = !result.onboardingDone;
+      _firstRunChoice = false;
+    });
   }
 
   /// Backup automatico una volta al giorno, alla prima apertura utile,
-  /// solo se un cloud \u00E8 collegato.
+  /// solo se un cloud collegato. Regole e protezioni (mai con database
+  /// vuoto, mai prima della scelta del primo avvio, invito al ripristino
+  /// se il cloud contiene gia backup) in [DailyBackupScheduler].
   Future<void> _maybeDailyBackup() async {
     if (_dailyBackupDone) return;
     final provider = widget.sync.cloud;
     if (provider == null || !provider.isConnected) return;
 
-    final last = DateTime.tryParse(
-      await widget.repository.getSetting('last_auto_backup_at'),
+    final scheduler = DailyBackupScheduler(
+      repository: widget.repository,
+      backup: widget.backup,
     );
-    final now = DateTime.now();
-    if (last != null &&
-        now.difference(last).inHours < 24) {
-      return;
+    final outcome = await scheduler.run(provider);
+    if (outcome == DailyBackupOutcome.invitedToRestore) {
+      _inviteToRestore();
     }
+    if (outcome != DailyBackupOutcome.notDueYet &&
+        outcome != DailyBackupOutcome.skippedNoCloud) {
+      _dailyBackupDone = true;
+    }
+  }
 
-    _dailyBackupDone = true;
-    try {
-      // Il backup automatico non usa password (non pu\u00F2 chiederla in
-      // automatico): resta protetto dall'account cloud del cliente. Il
-      // backup manuale cifrato resta disponibile.
-      final path = await widget.backup.createBackup();
-      await widget.backup.uploadBackup(provider, path);
-      await widget.repository.setSetting(
-        'last_auto_backup_at',
-        now.toIso8601String(),
-      );
-    } catch (_) {
-      // Il backup automatico non deve mai interrompere l'uso dell'app.
-    }
+  void _inviteToRestore() {
+    rootMessengerKey.currentState?.showSnackBar(
+      const SnackBar(
+        duration: Duration(seconds: 8),
+        content: Text(
+          'Il telefono non ha dati ma Google Drive contiene già dei backup: '
+          'ripristinali da Altro → Documenti e backup → Ripristina da '
+          'Google Drive.',
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_firstRunChoice) {
+      return FirstRunChoiceScreen(
+        onNewActivity: _startOnboardingFromChoice,
+        onRestore: _startRestoreFromChoice,
+      );
+    }
+
     if (_onboarding) {
       return OnboardingScreen(
         repository: widget.repository,
         license: widget.license,
         attachments: widget.attachments,
         reminders: widget.reminders,
+        sync: widget.sync,
         onFinished: () {
           setState(() => _onboarding = false);
           _maybeDailyBackup();

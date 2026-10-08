@@ -12,6 +12,7 @@ import 'package:haccpass/screens/onboarding/onboarding_screen.dart';
 import 'package:haccpass/services/attachment_service.dart';
 import 'package:haccpass/services/license_service.dart';
 import 'package:haccpass/services/reminder_service.dart';
+import 'package:haccpass/services/sync_service.dart';
 
 void main() {
   // Il wizard non usa lo store: forzando la piattaforma "desktop" il
@@ -75,6 +76,7 @@ void main() {
           license: license,
           attachments: AttachmentService(repository: repository),
           reminders: ReminderService(repository: repository),
+          sync: SyncService(repository: repository),
           onFinished: () {},
         ),
       ),

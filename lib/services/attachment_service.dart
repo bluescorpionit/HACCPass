@@ -357,7 +357,7 @@ class AttachmentService {
   }
 
   /// Miniatura 256 px lato lungo (~10-20 KB) per le foto: usata nelle
-  /// liste e quando il file locale \u00E8 stato liberato.
+  /// liste e quando il file locale è stato liberato.
   Future<String?> _makeThumbnail(String imagePath) async {
     try {
       final dir = await _baseDir();
@@ -372,10 +372,15 @@ class AttachmentService {
       );
       return thumb?.path ?? thumbPath;
     } catch (_) {
-      // La miniatura \u00E8 un'ottimizzazione: mai rompere il salvataggio.
+      // La miniatura è un'ottimizzazione: mai rompere il salvataggio.
       return null;
     }
   }
+
+  /// Rigenera la miniatura di un allegato (usata dal recupero foto dopo
+  /// un ripristino: l'originale è appena stato riscaricato).
+  Future<String?> regenerateThumbnail(String imagePath) =>
+      _makeThumbnail(imagePath);
 
   Future<(int, int)?> _imageSize(String path) async {
     try {
@@ -532,6 +537,15 @@ class AttachmentService {
         width: dimensions?.$1,
         height: dimensions?.$2,
       ),
+    );
+    // Se un cloud è attivo il file entra nella coda di caricamento, con
+    // il legame al record: dopo l'upload `cloud_id`/`synced_at` vengono
+    // scritti sull'allegato (Prompt 12, §D).
+    await repository.enqueueSync(
+      kind: 'attachment',
+      localPath: localPath,
+      remoteFolder: 'Foto',
+      attachmentId: id,
     );
     // Se un cloud \u00E8 attivo il file entra nella coda di caricamento.
     await repository.enqueueSync(

@@ -73,8 +73,12 @@ class OnboardingController extends ChangeNotifier {
   // Passo 9
   String cloudProvider = '';
   String cloudAccount = '';
+
+  /// Google Drive è stato collegato DENTRO questo passo (pulsante
+  /// "Collega ora"): senza collegamento effettivo il provider salvato
+  /// resta 'local' (Prompt 12, §G).
+  bool cloudConnected = false;
   bool backupEncrypted = false;
-  String backupPassword = '';
 
   // Passo 10
   String reminderMorning = '09:00';
@@ -409,10 +413,17 @@ class OnboardingController extends ChangeNotifier {
     await repository.applyWizardProducts(rows);
   }
 
-  /// Passo 9: cloud e cifratura.
+  /// Passo 9: cloud e cifratura. `gdrive` viene salvato SOLO se il
+  /// collegamento è avvenuto davvero; altrimenti si salva 'local' e la
+  /// UI mostra dove collegarsi più tardi (Prompt 12, §G).
   Future<void> saveCloudChoice() async {
-    await repository.setSetting('cloud_provider', cloudProvider);
-    await repository.setSetting('cloud_account', cloudAccount);
+    final effective =
+        cloudProvider == 'gdrive' && cloudConnected ? 'gdrive' : 'local';
+    await repository.setSetting('cloud_provider', effective);
+    await repository.setSetting(
+      'cloud_account',
+      cloudConnected ? cloudAccount : '',
+    );
     await repository.setSetting(
       'backup_encrypted',
       backupEncrypted ? '1' : '0',

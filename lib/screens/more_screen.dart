@@ -55,6 +55,7 @@ class MoreScreen extends StatelessWidget {
             license: license,
             attachments: attachments,
             reminders: reminders,
+            sync: sync,
             onFinished: () {},
           ),
         ),
@@ -127,7 +128,12 @@ class MoreScreen extends StatelessWidget {
         Icons.cloud_outlined,
         () => _push(
           context,
-          CloudBackupScreen(repository: repository, backup: backup, sync: sync),
+          CloudBackupScreen(
+            repository: repository,
+            backup: backup,
+            sync: sync,
+            license: license,
+          ),
         ),
       ),
       (
@@ -146,7 +152,7 @@ class MoreScreen extends StatelessWidget {
           AttachmentStorageScreen(
             repository: repository,
             attachments: AttachmentService(repository: repository),
-            cloud: null,
+            cloud: sync.cloud,
           ),
         ),
       ),

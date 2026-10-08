@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../core/constants/haccp_rules.dart';
@@ -1704,6 +1705,18 @@ class HaccpRepository {
     });
   }
 
+  /// Percorso della miniatura rigenerata (recupero foto dopo ripristino).
+  Future<void> updateAttachmentThumb(int id, String? thumbPath) async {
+    await _write(() async {
+      await _db.update(
+        'attachments',
+        {'thumb_path': thumbPath},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
   /// Logo azienda: ultimo allegato foto dell'entit\u00E0 company.
   Future<Attachment?> getCompanyLogo() async {
     final rows = await _db.query(
@@ -1760,12 +1773,14 @@ class HaccpRepository {
     required String kind,
     required String localPath,
     required String remoteFolder,
+    int? attachmentId,
   }) async {
     await _write(() async {
       await _db.insert('sync_queue', {
         'kind': kind,
         'local_path': localPath,
         'remote_folder': remoteFolder,
+        'attachment_id': attachmentId,
         'attempts': 0,
         'last_error': null,
         'created_at': DateTime.now().toIso8601String(),
@@ -1796,6 +1811,147 @@ class HaccpRepository {
     await _write(() async {
       await _db.delete('sync_queue', where: 'id = ?', whereArgs: [id]);
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ripristino: database "vuoto", percorsi e impostazioni di licenza
+  // ---------------------------------------------------------------------------
+
+  static const _registrationTables = [
+    'temperature_logs',
+    'cleaning_logs',
+    'receipts',
+    'lots',
+    'non_conformities',
+    'cooking_logs',
+    'waste_logs',
+    'pest_logs',
+    'thermometer_checks',
+    'blast_chill_cycles',
+    'transport_logs',
+    'sample_meals',
+    'water_checks',
+    'withdrawals',
+    'culture_log',
+    'cross_contamination_checks',
+    'donations',
+    'oil_validations',
+    'structure_checks',
+  ];
+
+  /// Database "vuoto" (Prompt 12, §A): nessuna azienda configurata,
+  /// nessuna registrazione e nessun allegato. Il seed iniziale (attrezzature
+  /// e pulizie di esempio, impostazioni di default) NON conta come dati.
+  Future<bool> isDatabaseEmpty() async {
+    final company = await getCompany();
+    final nameConfigured =
+        company.name.trim().isNotEmpty && company.name.trim() != 'La mia attività';
+    if (nameConfigured ||
+        company.vat.trim().isNotEmpty ||
+        company.haccpManager.trim().isNotEmpty) {
+      return false;
+    }
+
+    final tables = await _existingTables();
+    for (final table in ['attachments', ..._registrationTables]) {
+      if (!tables.contains(table)) continue;
+      final count =
+          Sqflite.firstIntValue(await _db.rawQuery('SELECT COUNT(*) FROM $table')) ?? 0;
+      if (count > 0) return false;
+    }
+    return true;
+  }
+
+  Future<Set<String>> _existingTables() async {
+    final rows = await _db
+        .rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'");
+    return rows.map((r) => r['name'] as String).toSet();
+  }
+
+  /// Riallineamento dei percorsi assoluti dopo un ripristino su un
+  /// telefono diverso (o dopo una reinstallazione: su iOS il percorso del
+  /// contenitore cambia). I percorsi vengono ricostruiti dalla parte
+  /// relativa (ciò che segue l'ultima cartella `attachments`) rispetto
+  /// alla radice attuale. Le righe il cui percorso non contiene la
+  /// cartella attesa restano come sono e vengono segnalate come
+  /// "da recuperare" (il file si riscarica dal cloud).
+  Future<PathRealignmentResult> realignAttachmentPaths(
+    String attachmentsRoot,
+  ) async {
+    final result = PathRealignmentResult(
+      realignedAttachments: 0,
+      realignedQueueEntries: 0,
+      unrecoverable: 0,
+    );
+
+    await _write(() async {
+      final attachmentRows = await _db.query('attachments');
+      for (final row in attachmentRows) {
+        final id = row['id'] as int;
+        for (final column in ['local_path', 'thumb_path']) {
+          final raw = row[column] as String?;
+          if (raw == null || raw.isEmpty) continue;
+          final rebuilt = rebuildAttachmentsPath(raw, attachmentsRoot);
+          if (rebuilt == null) {
+            if (column == 'local_path') result.unrecoverable++;
+            continue;
+          }
+          if (rebuilt == raw) continue;
+          await _db.update(
+            'attachments',
+            {column: rebuilt},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          if (column == 'local_path') result.realignedAttachments++;
+        }
+      }
+
+      final queueRows = await _db.query('sync_queue');
+      for (final row in queueRows) {
+        final id = row['id'] as int;
+        final raw = row['local_path'] as String?;
+        if (raw == null || raw.isEmpty) continue;
+        final rebuilt = rebuildAttachmentsPath(raw, attachmentsRoot);
+        if (rebuilt == null || rebuilt == raw) continue;
+        await _db.update(
+          'sync_queue',
+          {'local_path': rebuilt},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        result.realignedQueueEntries++;
+      }
+    });
+    return result;
+  }
+
+  /// Impostazioni di licenza/trial: chiavi MAI importate da un backup
+  /// (Prompt 12, §C). Il ripristino le conserva dal database locale.
+  static const licenseSettingKeys = [
+    'license_kind',
+    'license_expires_at',
+    'license_customer',
+    'license_key',
+    'iap_active',
+    'iap_verified_at',
+    'trial_started_at',
+  ];
+
+  Future<Map<String, String>> readLicenseSettings() async {
+    final values = <String, String>{};
+    for (final key in licenseSettingKeys) {
+      values[key] = await getSetting(key);
+    }
+    return values;
+  }
+
+  /// Riscrive le impostazioni di licenza salvate prima della sostituzione
+  /// del database (valore vuoto = chiave assente dal database locale).
+  Future<void> writeLicenseSettings(Map<String, String> values) async {
+    for (final key in licenseSettingKeys) {
+      await setSetting(key, values[key] ?? '');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2504,4 +2660,45 @@ class TraceabilityResult {
   final List<Receipt> receipts;
 
   bool get isEmpty => lots.isEmpty && receipts.isEmpty;
+}
+
+/// Esito del riallineamento dei percorsi degli allegati dopo un
+/// ripristino: quante righe sono state riscritte e quante restano "da
+/// recuperare" (percorso senza la cartella `attachments`: il file si
+/// riscarica dal cloud con il servizio di recupero foto).
+class PathRealignmentResult {
+  PathRealignmentResult({
+    required this.realignedAttachments,
+    required this.realignedQueueEntries,
+    required this.unrecoverable,
+  });
+
+  int realignedAttachments;
+  int realignedQueueEntries;
+  int unrecoverable;
+}
+
+/// Ricostruisce un percorso assoluto di allegato rispetto alla radice
+/// attuale: prende ciò che segue l'ULTIMA occorrenza della cartella
+/// `attachments` (funziona tra telefoni, tra Android e iOS e dopo una
+/// reinstallazione, con separatori `/` o `\`). Null se il percorso non
+/// contiene la cartella attesa.
+String? rebuildAttachmentsPath(String rawPath, String attachmentsRoot) {
+  final normalized = rawPath.replaceAll('\\', '/');
+  final last = normalized.lastIndexOf('/attachments/');
+  final hasRootPrefix = normalized.startsWith('${attachmentsRoot.replaceAll('\\', '/')}/');
+  if (last == -1 && !hasRootPrefix) return null;
+
+  String relative;
+  if (last != -1) {
+    relative = normalized.substring(last + '/attachments/'.length);
+  } else {
+    relative = normalized.substring(attachmentsRoot.replaceAll('\\', '/').length + 1);
+  }
+  if (relative.isEmpty || relative.endsWith('/')) return null;
+  // Percorso già corretto per questa radice: nessuna riscrittura.
+  if (rawPath == p.joinAll([attachmentsRoot, ...relative.split('/')])) {
+    return rawPath;
+  }
+  return p.joinAll([attachmentsRoot, ...relative.split('/')]);
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -71,8 +72,7 @@ class GoogleDriveProvider extends CloudStorageProvider {
   }
 
   @override
-  Future<bool> connect({bool interactive = true}) async {
-    try {
+  Future<bool> connect({bool interactive = true}) async {    try {
       _lastConnectError = null;
       _validateConfiguration();
       await _initSignIn();
@@ -181,16 +181,70 @@ class GoogleDriveProvider extends CloudStorageProvider {
   }
 
   @override
-  Future<void> download(String id, String destination) async {
+  Future<void> download(
+    String id,
+    String destination, {
+    void Function(int downloaded, int? total)? onProgress,
+    bool Function()? shouldCancel,
+  }) async {
     final media = await _drive.files.get(
       id,
       downloadOptions: drive.DownloadOptions.fullMedia,
     ) as drive.Media;
     final sink = File(destination).openWrite();
-    await for (final chunk in media.stream) {
-      sink.add(chunk);
+    var downloaded = 0;
+    try {
+      await for (final chunk in media.stream) {
+        if (shouldCancel?.call() ?? false) {
+          throw const CloudDownloadCancelled();
+        }
+        sink.add(chunk);
+        downloaded += chunk.length;
+        onProgress?.call(downloaded, media.length);
+      }
+      await sink.close();
+    } catch (_) {
+      await sink.close();
+      final partial = File(destination);
+      if (await partial.exists()) {
+        try {
+          await partial.delete();
+        } catch (_) {
+          // Eliminazione best-effort del file parziale.
+        }
+      }
+      rethrow;
     }
-    await sink.close();
+  }
+
+  /// Lettura parziale (Range 0..count-1): serve a riconoscere i backup
+  /// cifrati (primi 4 byte `BHB1`/`BHB2`) senza scaricare tutto il file.
+  @override
+  Future<Uint8List?> peekFirstBytes(String id, int count) async {
+    try {
+      final media = await _drive.files.get(
+        id,
+        downloadOptions: drive.PartialDownloadOptions(
+          drive.ByteRange(0, count - 1),
+        ),
+      ) as drive.Media;
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in media.stream) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    } catch (_) {
+      // Range non supportato o rete assente: il chiamante mostra il
+      // badge "cifrato" come sconosciuto.
+      return null;
+    }
+  }
+
+  /// Eliminazione di un file creato dall'app: ammessa con lo scope
+  /// `drive.file` (Prompt 12, §E: conservazione degli ultimi backup).
+  @override
+  Future<void> delete(String id) async {
+    await _drive.files.delete(id);
   }
 
   @override

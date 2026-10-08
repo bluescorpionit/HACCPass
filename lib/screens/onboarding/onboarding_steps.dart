@@ -11,7 +11,9 @@ import '../../../core/constants/haccp_rules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../services/attachment_service.dart';
+import '../../../services/cloud/google_drive_provider.dart';
 import '../../../services/onboarding/onboarding_controller.dart';
+import '../../../services/sync_service.dart';
 import '../../../widgets/common_widgets.dart';
 
 // ---------------------------------------------------------------------------
@@ -1004,19 +1006,28 @@ class _ProductsStepState extends State<ProductsStep> {
 // ---------------------------------------------------------------------------
 
 class CloudStep extends StatefulWidget {
-  const CloudStep({super.key, required this.controller});
+  const CloudStep({
+    super.key,
+    required this.controller,
+    required this.sync,
+  });
 
   final OnboardingController controller;
+  final SyncService sync;
 
   @override
   State<CloudStep> createState() => _CloudStepState();
 }
 
 class _CloudStepState extends State<CloudStep> {
+  bool _connecting = false;
+  String? _connectError;
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final onIOS = !kIsWeb && Platform.isIOS;
+    final driveChosen = controller.cloudProvider == 'gdrive';
 
     return StepBody(
       explanation:
@@ -1063,31 +1074,120 @@ class _CloudStepState extends State<CloudStep> {
                   secondary: Icon(choice.$3),
                 ),
               ),
+            if (driveChosen) ...[
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (controller.cloudConnected)
+                        Row(
+                          children: [
+                            const Icon(Icons.cloud_done_outlined),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Collegato: ${controller.cloudAccount}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        Text(
+                          'Collega ora il tuo account Google per attivare i '
+                          'backup automatici: si apre l’accesso Google e '
+                          'l’app vede solo i file che crea nella cartella '
+                          'HACCPass.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: _connecting ? null : _connectNow,
+                          icon: _connecting
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(Icons.link),
+                          label: const Text('Collega ora'),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Puoi anche andare avanti ora e collegare Google '
+                          'Drive più tardi da Altro → Documenti e backup.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                      if (_connectError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _connectError!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             SwitchListTile(
               title: const Text('Cifra i backup con una password'),
               subtitle: const Text(
-                'AES-256: senza password non si recupera nulla. Consigliato '
-                'perch\u00E9 i backup contengono dati del personale.',
+                'AES-256, vale SOLO per i backup manuali del database: la '
+                'password si chiede ogni volta. Il backup automatico e '
+                'quello completo con foto non sono cifrabili.',
               ),
               value: controller.backupEncrypted,
               onChanged: (v) => setState(
                 () => controller.backupEncrypted = v,
               ),
             ),
-            if (controller.backupEncrypted)
-              TextField(
-                decoration: const InputDecoration(
-                  labelText:
-                      'Password dei backup (non salvata nell\u2019app)',
-                ),
-                obscureText: true,
-                onChanged: (v) => controller.backupPassword = v,
-              ),
+            Text(
+              'Ti chiederemo la password a ogni backup manuale: il backup '
+              'automatico non può chiederla e non è cifrato.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _connectNow() async {
+    setState(() {
+      _connecting = true;
+      _connectError = null;
+    });
+    try {
+      final provider = GoogleDriveProvider();
+      // Solo dal pulsante: qui possono comparire le finestre di Google.
+      final connected = await provider.connect(interactive: true);
+      if (!mounted) return;
+      if (!connected) {
+        setState(() {
+          _connectError = provider.lastConnectError == null
+              ? 'Collegamento non completato.'
+              : provider.humanError(provider.lastConnectError!);
+        });
+        return;
+      }
+      widget.sync.cloud = provider;
+      setState(() {
+        widget.controller.cloudConnected = true;
+        widget.controller.cloudAccount = provider.accountLabel ?? '';
+        widget.controller.uiChanged();
+      });
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
   }
 }
 

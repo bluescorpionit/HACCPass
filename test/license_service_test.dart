@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'package:haccpass/core/license/entitlement_source.dart';
+import 'package:haccpass/core/license/license_codec.dart';
 import 'package:haccpass/core/license/trial_anchor.dart';
 import 'package:haccpass/services/license_service.dart';
 
@@ -213,8 +214,16 @@ void main() {
     });
 
     test('chiave offline valida vince sull\u2019abbonamento', () async {
+      // Prompt 12, C.2: la riga license_kind del database non basta
+      // più: serve la CHIAVE valida (rivalidata con l'HMAC), con
+      // scadenza e cliente derivati dalla chiave stessa.
+      final codec = LicenseCodec(secret: LicenseService.appSecret);
       final settings = _MemSettings()
         ..map['license_kind'] = 'offline'
+        ..map['license_key'] = codec.generate(
+              customerCode: 'CLIENTE1',
+              expiresAt: DateTime.now().add(const Duration(days: 300)),
+            )
         ..map['license_expires_at'] =
             DateTime.now().add(const Duration(days: 300)).toIso8601String()
         ..map['iap_active'] = '1';

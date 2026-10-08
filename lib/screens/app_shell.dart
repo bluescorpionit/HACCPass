@@ -188,6 +188,7 @@ class _AppShellState extends State<AppShell> {
             license: widget.license,
             attachments: widget.attachments,
             reminders: widget.reminders,
+            sync: widget.sync,
             onFinished: () {},
           ),
         ));

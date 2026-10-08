@@ -10,8 +10,11 @@ import '../repositories/haccp_repository.dart';
 import '../services/backup_service.dart';
 import '../services/cloud/cloud_storage.dart';
 import '../services/cloud/google_drive_provider.dart';
+import '../services/license_service.dart';
+import '../services/restore_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/common_widgets.dart';
+import 'restore_wizard_screen.dart';
 
 /// Schermata "Documenti e backup": stato del cloud, backup cifrato,
 /// ripristino, coda di caricamento.
@@ -21,11 +24,13 @@ class CloudBackupScreen extends StatefulWidget {
     required this.repository,
     required this.backup,
     required this.sync,
+    required this.license,
   });
 
   final HaccpRepository repository;
   final BackupService backup;
   final SyncService sync;
+  final LicenseService license;
 
   @override
   State<CloudBackupScreen> createState() => _CloudBackupScreenState();
@@ -264,13 +269,16 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
     );
   }
 
+  /// Ripristino con [RestoreService]: sanificazione licenza, riallineamento
+  /// percorsi e allegati dei backup completi inclusi (Prompt 12, B/C/D).
   Future<void> _restore({CloudFile? remote}) async {
     final messenger = ScaffoldMessenger.of(context);
+    Directory? tempDir;
     String? path;
     if (remote != null) {
       setState(() => busy = true);
       try {
-        final tempDir = await Directory.systemTemp.createTemp('bh_download');
+        tempDir = await Directory.systemTemp.createTemp('bh_download');
         path = '${tempDir.path}/${remote.name}';
         await _provider.download(remote.id, path);
       } catch (e) {
@@ -296,7 +304,8 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
         title: const Text('Ripristinare il backup?'),
         content: const Text(
           'I dati attuali verranno sostituiti. Prima del ripristino viene '
-          'creato automaticamente un backup di sicurezza.',
+          'creato automaticamente un backup di sicurezza. Se il backup '
+          'include le foto, verranno ripristinate anche quelle.',
         ),
         actions: [
           TextButton(
@@ -314,17 +323,42 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
 
     setState(() => busy = true);
     try {
-      final content = await _readWithPasswordIfNeeded(path);
-      if (content == null) {
+      final restore = RestoreService(
+        repository: widget.repository,
+        backup: widget.backup,
+      );
+      // Password se serve: fino a 3 tentativi (Prompt 12, A.5).
+      String? password;
+      var restored = false;
+      for (var attempt = 0; attempt < 3 && !restored; attempt++) {
+        try {
+          await restore.restoreFromFile(
+            path,
+            password: password,
+            onProgress: (progress) =>
+                setState(() => status = progress.message),
+          );
+          restored = true;
+        } on BackupException catch (e) {
+          final needsPassword = e.message.contains('password') ||
+              e.message.contains('Password');
+          if (!needsPassword) rethrow;
+          password = await _askPassword();
+          if (password == null || password.isEmpty) return;
+        }
+      }
+      if (!restored) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('Ripristino annullato.')),
+          const SnackBar(
+            content: Text(
+              'Troppi tentativi con la password: ripristino annullato, '
+              'nessun dato modificato.',
+            ),
+          ),
         );
         return;
       }
-      await widget.backup.restoreBackup(
-        content,
-        onProgress: (message) => setState(() => status = message),
-      );
+      await widget.license.reloadAfterRestore();
       messenger.showSnackBar(
         const SnackBar(content: Text('Backup ripristinato.')),
       );
@@ -333,34 +367,28 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
         SnackBar(content: Text(e is BackupException ? e.message : 'Ripristino non riuscito: $e')),
       );
     } finally {
+      try {
+        if (tempDir != null) await tempDir.delete(recursive: true);
+      } catch (_) {}
       if (mounted) setState(() => busy = false);
       _refresh();
     }
   }
 
-  /// Legge il backup chiedendo la password se serve (con un secondo
-  /// tentativo se la prima \u00E8 errata). Null = annullato dall\u2019utente.
-  Future<BackupContent?> _readWithPasswordIfNeeded(String path) async {
-    try {
-      return await widget.backup.readBackup(path);
-    } on BackupException catch (e) {
-      if (!e.message.contains('password')) rethrow;
-    }
-    for (var attempt = 0; attempt < 2; attempt++) {
-      final password = await _askPassword();
-      if (password == null || password.isEmpty) return null;
-      try {
-        return await widget.backup.readBackup(path, password: password);
-      } on BackupException catch (e) {
-        if (!e.message.contains('Password errata')) rethrow;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Password errata, riprova.')),
-          );
-        }
-      }
-    }
-    return null;
+  /// "Ripristina da Google Drive" (Prompt 12, A): lo stesso wizard del
+  /// primo avvio, riusabile qui.
+  Future<void> _restoreFromDrive() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RestoreWizardScreen(
+          repository: widget.repository,
+          backup: widget.backup,
+          license: widget.license,
+          sync: widget.sync,
+        ),
+      ),
+    );
+    _refresh();
   }
 
   Future<void> _processQueue() async {
@@ -524,6 +552,15 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
+                SizedBox(
+                  height: 54,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _restoreFromDrive,
+                    icon: const Icon(Icons.cloud_download_outlined),
+                    label: const Text('Ripristina da Google Drive'),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 SizedBox(
                   height: 54,
                   child: OutlinedButton.icon(

@@ -6,6 +6,7 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 abstract class CloudStorageProvider {
   /// Codice persistito in settings (`cloud_provider`).
@@ -19,8 +20,11 @@ abstract class CloudStorageProvider {
   String? get accountLabel;
 
   /// Chiede il collegamento (OAuth o selettore di sistema).
+  ///
+  /// [interactive] è riservato all'azione esplicita dell'utente (pulsante
+  /// "Collega"): solo in quel caso possono comparire finestre di Google.
   /// Restituisce true se collegato.
-  Future<bool> connect();
+  Future<bool> connect({bool interactive = true});
 
   /// Revoca i token e cancella le credenziali locali.
   Future<void> disconnect();
@@ -42,11 +46,36 @@ abstract class CloudStorageProvider {
   Future<List<CloudFile>> list(String folder);
 
   /// Scarica un file remoto in un percorso locale.
-  Future<void> download(String id, String destination);
+  ///
+  /// [onProgress] riceve i byte scaricati e la dimensione totale (se
+  /// nota); [shouldCancel] permette di interrompere lo scaricamento:
+  /// in quel caso il file parziale viene eliminato e viene lanciata
+  /// [CloudDownloadCancelled].
+  Future<void> download(
+    String id,
+    String destination, {
+    void Function(int downloaded, int? total)? onProgress,
+    bool Function()? shouldCancel,
+  });
+
+  /// Legge i primi [count] byte di un file remoto senza scaricarlo
+  /// tutto (usato per riconoscere i backup cifrati). Null se il
+  /// provider non supporta la lettura parziale.
+  Future<Uint8List?> peekFirstBytes(String id, int count) async => null;
+
+  /// Elimina un file remoto (conservazione dei backup). I provider che
+  /// non la supportano lanciano [UnsupportedError]; "solo questo
+  /// dispositivo" è un no-op (nessun file remoto).
+  Future<void> delete(String id) async {
+    throw UnsupportedError(
+      'Questo servizio cloud non supporta l\u2019eliminazione remota.',
+    );
+  }
 
   /// Caricare in cloud pu\u00F2 fallire per molti motivi: questi messaggi
   /// sono pensati per l'operatore, in italiano.
   String humanError(Object error) {
+    if (error is CloudDownloadCancelled) return error.toString();
     final text = error.toString().toLowerCase();
     if (text.contains('quota') || text.contains('storagequant')) {
       return 'Spazio del cloud esaurito.';
@@ -77,6 +106,15 @@ class CloudFile {
   final int? size;
 }
 
+/// Scaricamento annullato dall'utente: il file parziale è già stato
+/// eliminato dal provider.
+class CloudDownloadCancelled implements Exception {
+  const CloudDownloadCancelled();
+
+  @override
+  String toString() => 'Scaricamento annullato.';
+}
+
 /// Fornitore "solo questo dispositivo": nessun collegamento, nessun
 /// caricamento automatico. Backup e PDF passano dal foglio di condivisione
 /// o dal selettore "Salva con nome" di sistema (che include ogni cloud
@@ -95,7 +133,7 @@ class LocalFilesProvider extends CloudStorageProvider {
   String? get accountLabel => null;
 
   @override
-  Future<bool> connect() async => true;
+  Future<bool> connect({bool interactive = true}) async => true;
 
   @override
   Future<void> disconnect() async {}
@@ -119,9 +157,17 @@ class LocalFilesProvider extends CloudStorageProvider {
   Future<List<CloudFile>> list(String folder) async => const [];
 
   @override
-  Future<void> download(String id, String destination) async {
+  Future<void> download(
+    String id,
+    String destination, {
+    void Function(int downloaded, int? total)? onProgress,
+    bool Function()? shouldCancel,
+  }) async {
     throw UnsupportedError('Nessun cloud collegato.');
   }
+
+  @override
+  Future<void> delete(String id) async {}
 }
 
 /// Verifica che un file esista e sia leggibile (usata dal ripristino).

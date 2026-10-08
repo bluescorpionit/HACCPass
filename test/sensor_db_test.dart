@@ -121,7 +121,7 @@ void main() {
       final db = migrated.db;
 
       // Il DB sale all'ultima versione (6 dopo le migrazioni successive).
-      expect(await db.getVersion(), 6);
+      expect(await db.getVersion(), 7);
 
       // Nuove tabelle e indici.
       for (final name in [

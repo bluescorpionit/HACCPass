@@ -107,7 +107,7 @@ void main() {
     final migrated = AppDatabase(path: path);
     await migrated.initialize();
     final db = migrated.db;
-    expect(await db.getVersion(), 6);
+    expect(await db.getVersion(), 7);
 
     for (final column in [
       'sha256', 'thumb_path', 'width', 'height', 'offloaded_at',
@@ -261,7 +261,7 @@ void main() {
     // Il manifest riporta la versione REALE dello schema e gli allegati.
     final bytes = await File(path!).readAsBytes();
     final zip = await backup.readBackup(path);
-    expect(zip.schemaVersion, 6);
+    expect(zip.schemaVersion, 7);
     final manifestText = String.fromCharCodes(
       bytes.sublist(0, bytes.length).where((_) => true),
     );

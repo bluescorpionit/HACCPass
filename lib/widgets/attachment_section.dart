@@ -8,7 +8,9 @@ import '../core/theme/app_theme.dart';
 import '../core/utils/format.dart';
 import '../models/haccp_models.dart';
 import '../repositories/haccp_repository.dart';
+import '../services/attachment_recovery_service.dart';
 import '../services/attachment_service.dart';
+import '../services/sync_service.dart';
 import 'common_widgets.dart';
 
 /// Sezione allegati riutilizzabile: elenco, aggiunta foto/documento,
@@ -108,9 +110,10 @@ class _AttachmentSectionState extends State<AttachmentSection> {
     final exists = await file.exists();
     if (!mounted) return;
     if (!exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('File non trovato sul dispositivo.')),
-      );
+      // "Scarica quando servono" (Prompt 12, D.3): il file locale manca
+      // (es. ripristino da backup di soli dati): segnaposto con download
+      // al tocco, se il cloud è collegato.
+      await _recoverAndOpen(attachment);
       return;
     }
 
@@ -119,6 +122,76 @@ class _AttachmentSectionState extends State<AttachmentSection> {
         builder: (_) => _AttachmentViewer(attachment: attachment),
       ),
     );
+  }
+
+  Future<void> _recoverAndOpen(Attachment attachment) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final cloud = SyncService.instance?.cloud;
+    if (cloud == null || !cloud.isConnected) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto non ancora scaricata: collega Google Drive per '
+            'recuperarla (Altro → Documenti e backup).',
+          ),
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Scaricare dal cloud?'),
+        content: Text(
+          '"${attachment.fileName}" non è sul telefono '
+          '(backup di soli dati). Puoi scaricarlo ora da Google Drive.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Scarica'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final recovery = AttachmentRecoveryService(
+      repository: widget.repository,
+      cloud: cloud,
+    );
+    final status = await recovery.recoverOne(attachment);
+    if (!mounted) return;
+    switch (status) {
+      case AttachmentRecoverStatus.recovered:
+      case AttachmentRecoverStatus.alreadyPresent:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File scaricato dal cloud.')),
+        );
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => _AttachmentViewer(attachment: attachment),
+          ),
+        );
+      case AttachmentRecoverStatus.notFound:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File non trovato nel cloud: potrebbe non essere '
+                'mai stato caricato.'),
+          ),
+        );
+      case AttachmentRecoverStatus.failed:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download non riuscito (rete assente?): la foto '
+                'resta "non ancora scaricata", riprova più tardi.'),
+          ),
+        );
+    }
   }
 
   Future<void> _confirmDelete(Attachment attachment) async {

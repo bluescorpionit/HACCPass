@@ -11,7 +11,12 @@ import 'package:sqflite/sqflite.dart';
 /// Migrazioni con `onUpgrade`: nessun dato viene cancellato.
 /// Versione corrente dello schema del database (riportata nel manifest
 /// dei backup).
-const int appDatabaseVersion = 6;
+///
+/// V7 (ripristino da cloud): `sync_queue.attachment_id` collega la voce
+/// in coda al record `attachments` corrispondente: dopo l'upload
+/// `cloud_id`/`synced_at` vengono scritti sull'allegato, così dopo un
+/// ripristino si sa quale file remoto riscaricare.
+const int appDatabaseVersion = 7;
 
 class AppDatabase {
   /// [path] \u00E8 usato nei test per puntare a un file dedicato.
@@ -53,7 +58,7 @@ class AppDatabase {
 
     _db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
@@ -100,6 +105,7 @@ class AppDatabase {
     await _createV4Tables(database);
     await _createV5Tables(database);
     await _createV6Tables(database);
+    await _createV7Tables(database);
     await _seed(database);
     await _insertV4Defaults(database);
   }
@@ -119,6 +125,9 @@ class AppDatabase {
     }
     if (oldVersion < 6) {
       await _migrateV5toV6(database);
+    }
+    if (oldVersion < 7) {
+      await _migrateV6toV7(database);
     }
   }
 
@@ -234,6 +243,23 @@ class AppDatabase {
 
   Future<void> _migrateV5toV6(Database database) async {
     await _createV6Tables(database);
+  }
+
+  /// V7: legame coda di caricamento ↔ allegato. La colonna
+  /// `sync_queue.attachment_id` (null per i PDF) permette a
+  /// `SyncService.processQueue` di scrivere `cloud_id`/`synced_at`
+  /// sull'allegato dopo l'upload. Nessun dato esistente viene toccato.
+  Future<void> _createV7Tables(Database database) async {
+    if (!await _tableExists(database, 'sync_queue')) return;
+    await _addColumn(database, 'sync_queue', 'attachment_id', 'INTEGER');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_attachment '
+      'ON sync_queue(attachment_id)',
+    );
+  }
+
+  Future<void> _migrateV6toV7(Database database) async {
+    await _createV7Tables(database);
   }
 
   Future<void> _createV4Tables(Database database) async {

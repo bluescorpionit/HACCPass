@@ -6,6 +6,7 @@ import '../../services/license_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/reminder_service.dart';
 import '../../services/onboarding/onboarding_controller.dart';
+import '../../services/sync_service.dart';
 import '../lots_screen.dart' show PdfPreviewScreen;
 import 'onboarding_steps.dart';
 
@@ -18,6 +19,7 @@ class OnboardingScreen extends StatefulWidget {
     required this.license,
     required this.attachments,
     required this.reminders,
+    required this.sync,
     required this.onFinished,
   });
 
@@ -25,6 +27,7 @@ class OnboardingScreen extends StatefulWidget {
   final LicenseService license;
   final AttachmentService attachments;
   final ReminderService reminders;
+  final SyncService sync;
   final VoidCallback onFinished;
 
   @override
@@ -349,7 +352,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               6 => PestStep(controller: controller),
               7 => SuppliersStep(controller: controller),
               8 => ProductsStep(controller: controller),
-              9 => CloudStep(controller: controller),
+              9 => CloudStep(controller: controller, sync: widget.sync),
               10 => RemindersStep(
                   controller: controller,
                   onRequestPermission:

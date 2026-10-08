@@ -35,9 +35,11 @@ class SyncService {
     var uploaded = 0;
     for (final entry in queue) {
       final id = (entry['id'] as num).toInt();
+      final kind = entry['kind'] as String? ?? '';
       final localPath = entry['local_path'] as String? ?? '';
       final folder = entry['remote_folder'] as String? ?? 'Report';
       final attempts = (entry['attempts'] as num?)?.toInt() ?? 0;
+      final attachmentId = (entry['attachment_id'] as num?)?.toInt();
 
       if (localPath.isEmpty || !await isReadableFile(localPath)) {
         await repository.dequeueSync(id);
@@ -47,11 +49,21 @@ class SyncService {
       }
 
       try {
-        await provider.upload(
+        final remoteId = await provider.upload(
           path: localPath,
           remoteName: _remoteName(localPath),
           folder: folder,
         );
+        // Legame allegato ↔ file remoto (Prompt 12, §D): dopo l'upload
+        // si registra quale file di Drive corrisponde all'allegato, così
+        // dopo un ripristino si sa cosa riscaricare.
+        if (kind == 'attachment' && attachmentId != null) {
+          await repository.updateAttachmentSync(
+            id: attachmentId,
+            cloudId: remoteId,
+            syncedAt: DateTime.now(),
+          );
+        }
         await repository.dequeueSync(id);
         uploaded++;
       } catch (e) {
