@@ -1,6 +1,10 @@
+// Test STORICI del codec delle chiavi offline (Prompt 13): non fanno
+// più parte della suite `flutter test` (il codec è fuori dalla build).
+// Eseguibili manualmente con:
+//   dart run tool/archive/license_codec_test.dart  (con test runner)
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:haccpass/core/license/license_codec.dart';
+import 'license_codec.dart';
 
 void main() {
   const secret = 'test-secret-123';

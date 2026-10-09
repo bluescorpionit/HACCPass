@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/constants/app_links.dart';
 import '../../core/constants/business_templates.dart';
 import '../../core/constants/haccp_rules.dart';
 import '../../models/haccp_models.dart';
@@ -17,14 +18,15 @@ class OnboardingController extends ChangeNotifier {
   OnboardingController({
     required this.repository,
     required this.attachments,
-    this.termsUrl = 'https://bluescorpion.example/termini',
-    this.privacyUrl = 'https://bluescorpion.example/privacy',
+    this.termsUrl = AppLinks.termsUrl,
+    this.privacyUrl = AppLinks.privacyUrl,
   });
 
   final HaccpRepository repository;
   final AttachmentService attachments;
 
-  /// URL configurabili di Termini e Privacy (pagine del titolare).
+  /// URL di Termini e Privacy: default da `AppLinks` (unica fonte),
+  /// sovrascrivibili nei test.
   final String termsUrl;
   final String privacyUrl;
 

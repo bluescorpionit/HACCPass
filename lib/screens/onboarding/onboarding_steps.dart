@@ -882,6 +882,17 @@ class _SuppliersStepState extends State<SuppliersStep> {
             icon: const Icon(Icons.import_contacts_outlined),
             label: const Text('Importa dai contatti del telefono'),
           ),
+          const SizedBox(height: 4),
+          // Scopo del permesso spiegato PRIMA della richiesta, chiesta
+          // solo al tocco del pulsante (Prompt 11-bis, §6).
+          Text(
+            'Il permesso di lettura dei contatti viene chiesto solo ora e '
+            'serve a copiare nome e telefono dei fornitori nel registro: '
+            'nessun contatto lascia il telefono.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
           const SizedBox(height: 8),
           for (final supplier in controller.suppliers)
             Card(
@@ -1386,8 +1397,10 @@ class _PrintingStepState extends State<PrintingStep> {
     return StepBody(
       explanation:
           'Le etichette dei lotti usano questo formato. La stampante si '
-          'sceglie dal sistema: AirPrint su iPhone, servizio di stampa su '
-          'Android.',
+          'sceglie qui sotto: Brother, Niimbot, una termica generica '
+          '(ESC/POS o TSPL) oppure la stampa di sistema. Si pu\u00F2 anche '
+          'saltare e configurarla dopo: senza stampante l\u2019app funziona '
+          'lo stesso.',
       child: RadioGroup<String>(
         groupValue: controller.labelFormat,
         onChanged: (v) =>

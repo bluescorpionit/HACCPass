@@ -6,8 +6,8 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/billing_client_wrappers.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
+import '../core/license/app_integrity.dart';
 import '../core/license/entitlement_source.dart';
-import '../core/license/license_codec.dart';
 import '../core/license/trial_anchor.dart';
 import '../screens/license_screen.dart';
 import 'store_entitlement_source.dart';
@@ -15,24 +15,30 @@ import 'store_entitlement_source.dart';
 /// ID prodotto configurabili per gli acquisti in-app. Vanno creati
 /// identici su Play Console e App Store Connect.
 ///
-/// L'unico prodotto in-app è l'abbonamento annuale con offerta di prova
-/// gratuita di 14 giorni gestita dallo store (Prompt 10): la licenza a
-/// vita NON è più offerta in-app, resta solo la chiave offline `BH1-…`
-/// (vendita diretta, nascosta su iOS).
+/// L'unico prodotto è l'abbonamento annuale con offerta di prova
+/// gratuita di 14 giorni gestita dallo store (Prompt 13): rinnovi,
+/// addebiti, rimborsi e prove dipendono SOLO dagli store. Le chiavi di
+/// licenza offline sono state rimosse (codice storico in
+/// `tool/archive/`).
 class LicenseProductIds {
   static const String annual = 'it.bluescorpion.haccpass.annual';
   static const Set<String> all = {annual};
 }
 
-enum LicenseKind { none, trial, offline, iap, debug }
+enum LicenseKind { none, trial, iap, debug }
 
-/// Priorità dello stato licenza (Prompt 10, B7):
-/// chiave offline valida > abbonamento attivo (anche in prova store) >
-/// prova locale di riserva attiva > sola lettura.
+/// Licenza store-only (Prompt 13). Priorità dello stato:
+/// abbonamento attivo (anche in prova dello store) > prova locale di
+/// riserva attiva > sola lettura; `debug` solo nelle build di debug.
 ///
 /// Nessuna scadenza calcolata come "oggi + 365": l'abbonamento è valido
 /// finché lo store lo riporta attivo ([EntitlementSource]); offline vale
 /// il periodo di tolleranza [offlineTolerance] da `iap_verified_at`.
+///
+/// Un database o un backup manomesso non concede nulla: le righe di
+/// licenza storiche (`license_kind`, `license_expires_at`,
+/// `license_key`, `license_customer`) non sono più lette per concedere
+/// nulla e vengono ripulite al primo avvio (migrazione silenziosa).
 class LicenseService extends ChangeNotifier {
   LicenseService({
     required Future<String?> Function(String key) readSetting,
@@ -43,33 +49,10 @@ class LicenseService extends ChangeNotifier {
         _writeSetting = writeSetting,
         _entitlement =
             entitlementSource ?? StoreEntitlementSource(productId: LicenseProductIds.annual),
-        _trialAnchor = trialAnchor ?? TrialAnchor.platform(secret: appSecret),
-        codec = LicenseCodec(secret: appSecret) {
-    // Un segreto vuoto renderebbe forgiabili le chiavi offline: in
-    // release l'app si rifiuta di partire (build/avvio esplicito),
-    // in debug resta consentito con avviso.
-    if (kReleaseMode && appSecret.isEmpty) {
-      throw StateError(
-        'BH_LICENSE_SECRET mancante: build di release senza segreto di '
-        'licenza. Ricompila con --dart-define=BH_LICENSE_SECRET=<valore> '
-        '(vedi docs/identificativi.md).',
-      );
-    }
-    assert(() {
-      if (appSecret.isEmpty) {
-        debugPrint(
-          'AVVISO: BH_LICENSE_SECRET vuoto (consentito solo in debug): le '
-          'chiavi offline NON sono sicure.',
-        );
-      }
-      return true;
-    }());
+        _trialAnchor =
+            trialAnchor ?? TrialAnchor.platform(secret: AppIntegrity.anchorSecret) {
+    AppIntegrity.assertConfigured();
   }
-
-  /// Segreto per la verifica offline delle chiavi e per la firma
-  /// dell'ancora della prova.
-  /// Passare in build: --dart-define=BH_LICENSE_SECRET=...
-  static const String appSecret = String.fromEnvironment('BH_LICENSE_SECRET');
 
   static const int trialDays = 14;
 
@@ -78,7 +61,6 @@ class LicenseService extends ChangeNotifier {
 
   final Future<String?> Function(String key) _readSetting;
   final Future<void> Function(String key, String value) _writeSetting;
-  final LicenseCodec codec;
   final EntitlementSource _entitlement;
   final TrialAnchor _trialAnchor;
 
@@ -89,14 +71,21 @@ class LicenseService extends ChangeNotifier {
   LicenseKind kind = LicenseKind.none;
   DateTime? trialStartedAt;
 
-  /// Scadenza SOLO per chiavi offline (e sblocco debug): l'abbonamento
-  /// in-app non ha scadenze calcolate lato client.
-  DateTime? expiresAt;
-  String customerCode = '';
-
   /// Abbonamento attivo secondo l'ultima verifica dello store.
   bool iapActive = false;
   DateTime? iapVerifiedAt;
+
+  /// La verifica è riuscita in questa sessione (store raggiunto ora).
+  bool iapVerifiedNow = false;
+
+  /// Lo store ha risposto che l'abbonamento non è più attivo (scaduto,
+  /// sospeso o disdetto poi scaduto): messaggi dedicati finché non si
+  /// riattiva.
+  bool subscriptionEnded = false;
+
+  /// Pagamento in sospeso (evento `pending` dello store): avviso non
+  /// bloccante con "Gestisci abbonamento".
+  bool paymentIssue = false;
 
   /// Orologio del dispositivo risultato indietro: sola lettura con
   /// stato esplicito, nessun dato cancellato.
@@ -114,7 +103,14 @@ class LicenseService extends ChangeNotifier {
   bool loading = true;
   String? lastError;
 
-  bool get isLifetime => kind != LicenseKind.none && _isLifetimeDate(expiresAt);
+  /// Piattaforme senza store (build di sviluppo desktop): lì la licenza
+  /// non si vende, si usa la prova locale poi sola lettura.
+  bool get isDesktop {
+    final platform = defaultTargetPlatform;
+    return platform == TargetPlatform.windows ||
+        platform == TargetPlatform.linux ||
+        platform == TargetPlatform.macOS;
+  }
 
   bool get trialActive {
     if (clockTampered) return false;
@@ -132,6 +128,15 @@ class LicenseService extends ChangeNotifier {
     return end.difference(DateTime.now()).inDays.clamp(0, trialDays);
   }
 
+  /// Giorni di tolleranza offline residui (da `iap_verified_at`).
+  int get offlineToleranceDaysLeft {
+    final verifiedAt = iapVerifiedAt;
+    if (verifiedAt == null) return 0;
+    final elapsed = DateTime.now().difference(verifiedAt);
+    if (elapsed >= offlineTolerance) return 0;
+    return offlineTolerance.inDays - elapsed.inDays;
+  }
+
   /// Messaggio esplicito quando l'orologio risulta alterato.
   String? get clockTamperedMessage => clockTampered
       ? 'Orologio del dispositivo alterato: verifica data e ora. I tuoi '
@@ -142,8 +147,6 @@ class LicenseService extends ChangeNotifier {
   /// true se si possono registrare nuovi dati o esportare PDF.
   bool get canWrite {
     switch (kind) {
-      case LicenseKind.offline:
-        return _licenseValid;
       case LicenseKind.iap:
         return iapActive;
       case LicenseKind.debug:
@@ -155,20 +158,10 @@ class LicenseService extends ChangeNotifier {
     }
   }
 
-  bool get _licenseValid => expiresAt == null || DateTime.now().isBefore(expiresAt!);
-
-  bool _isLifetimeDate(DateTime? d) =>
-      d != null && d.year >= 9999;
-
   /// Etichetta sintetica per il chip in dashboard.
   String get chipLabel {
     if (clockTampered) return 'Orologio alterato';
-    if (canWrite && isLifetime) return 'Licenza a vita';
     if (kind == LicenseKind.iap) return 'Abbonamento attivo';
-    if (kind == LicenseKind.offline) {
-      final days = expiresAt?.difference(DateTime.now()).inDays ?? 0;
-      return 'Licenza attiva ($days gg)';
-    }
     if (kind == LicenseKind.debug) return 'Sblocchi di prova (debug)';
     if (trialActive) return 'Prova: $trialDaysLeft giorni';
     return 'Prova scaduta';
@@ -190,6 +183,15 @@ class LicenseService extends ChangeNotifier {
     await _loadState();
     await _verifyEntitlement();
     loading = false;
+    notifyListeners();
+  }
+
+  /// "Riprova" della schermata licenza: reinizializza gli acquisti
+  /// (utile dopo il ripristino della rete o di Google Play).
+  Future<void> retryStoreInit() async {
+    lastError = null;
+    await _maybeInitIap();
+    await _verifyEntitlement();
     notifyListeners();
   }
 
@@ -228,42 +230,40 @@ class LicenseService extends ChangeNotifier {
       trialStartedAt!.toIso8601String(),
     );
 
-    final expRaw = await _readSetting('license_expires_at');
-    expiresAt = DateTime.tryParse(expRaw ?? '');
-    customerCode = await _readSetting('license_customer') ?? '';
     iapActive = await _readSetting('iap_active') == '1';
     iapVerifiedAt = _trustedVerifiedAt(
       DateTime.tryParse(await _readSetting('iap_verified_at') ?? ''),
     );
 
     switch (storedKind) {
-      case 'offline':
-        // Prompt 12, §C: le righe di licenza del database NON sono
-        // credute (un backup manomesso potrebbe contenere una licenza a
-        // vita gratis): scadenza e codice cliente si derivano SOLO
-        // dalla chiave, rivalidata con HMAC a ogni caricamento.
-        final key = await _readSetting('license_key');
-        final info = key == null ? null : codec.tryParse(key);
-        if (info != null && info.isValid) {
-          kind = LicenseKind.offline;
-          expiresAt = info.expiresAt;
-          customerCode = info.customerCode;
-        } else {
-          // Chiave assente o non valida: stato prova (scaduta se la
-          // prova è finita), mai la licenza scritta nel database.
-          kind = LicenseKind.trial;
-          expiresAt = null;
-          customerCode = '';
-        }
       case 'iap':
         kind = LicenseKind.iap;
       case 'debug':
         kind = kDebugMode ? LicenseKind.debug : LicenseKind.trial;
       default:
+        // 'offline' e valori sconosciuti: mai concesso nulla (Prompt 13,
+        // compatibilità dati). Un backup manomesso con license_kind/
+        // license_expires_at/license_key non sblocca l'app.
         kind = LicenseKind.trial;
     }
 
+    // Migrazione silenziosa delle righe delle vecchie chiavi offline:
+    // al primo avvio vengono pulite.
+    if (storedKind == 'offline') {
+      for (final key in const [
+        'license_key',
+        'license_expires_at',
+        'license_customer',
+      ]) {
+        final value = await _readSetting(key);
+        if (value != null && value.isNotEmpty) {
+          await _writeSetting(key, '');
+        }
+      }
+    }
+
     _applyPriority();
+    await _persistKind();
   }
 
   /// `iap_verified_at` è creduto solo se non è nel futuro (orologio
@@ -277,13 +277,9 @@ class LicenseService extends ChangeNotifier {
     return value;
   }
 
-  /// Priorità: chiave offline valida > abbonamento attivo (anche in
-  /// prova store) > prova locale > sola lettura.
+  /// Priorità: abbonamento attivo (anche in prova store) > prova locale >
+  /// sola lettura. `debug` resta sopra solo nelle build di debug.
   void _applyPriority() {
-    // Una licenza offline scaduta torna in prova (scaduta).
-    if (kind == LicenseKind.offline && !_licenseValid) {
-      kind = LicenseKind.trial;
-    }
     if (kind == LicenseKind.iap && !iapActive) {
       kind = LicenseKind.trial;
     }
@@ -293,10 +289,7 @@ class LicenseService extends ChangeNotifier {
   }
 
   Future<void> _maybeInitIap() async {
-    final desktop = defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.macOS;
-    if (desktop) {
+    if (isDesktop) {
       iapAvailable = false;
       return;
     }
@@ -320,7 +313,7 @@ class LicenseService extends ChangeNotifier {
       _updateStoreTexts(products);
       notifyListeners();
     } catch (e) {
-      // Store non raggiungibile: l'app resta utilizzabile con gli altri canali.
+      // Store non raggiungibile: la schermata licenza propone "Riprova".
       iapAvailable = false;
       lastError = 'Store non disponibile: $e';
     }
@@ -436,6 +429,7 @@ class LicenseService extends ChangeNotifier {
   /// di tolleranza [offlineTolerance] da `iap_verified_at`, poi sola
   /// lettura finché non si riesce a verificare.
   Future<void> _verifyEntitlement() async {
+    iapVerifiedNow = false;
     if (!iapActive && kind != LicenseKind.iap) return;
     final EntitlementState state;
     try {
@@ -446,8 +440,11 @@ class LicenseService extends ChangeNotifier {
     }
     if (state.verifiedNow && state.active) {
       iapActive = true;
+      iapVerifiedNow = true;
+      subscriptionEnded = false;
       iapVerifiedAt = state.verifiedAt ?? DateTime.now();
     } else if (state.verifiedNow) {
+      if (iapActive) subscriptionEnded = true;
       iapActive = false;
     } else {
       // Non verificato (offline): tolleranza da iap_verified_at.
@@ -470,9 +467,18 @@ class LicenseService extends ChangeNotifier {
           if (purchase.productID == LicenseProductIds.annual) {
             // Nessuna scadenza calcolata: lo stato dipende dallo store.
             iapActive = true;
+            iapVerifiedNow = true;
+            subscriptionEnded = false;
+            paymentIssue = false;
             iapVerifiedAt = DateTime.now();
             _applyPriority();
             await _persistIap();
+          }
+          await _complete(purchase);
+        case PurchaseStatus.pending:
+          if (purchase.productID == LicenseProductIds.annual) {
+            paymentIssue = true;
+            notifyListeners();
           }
           await _complete(purchase);
         case PurchaseStatus.error:
@@ -480,7 +486,6 @@ class LicenseService extends ChangeNotifier {
           notifyListeners();
           await _complete(purchase);
         case PurchaseStatus.canceled:
-        case PurchaseStatus.pending:
           await _complete(purchase);
       }
     }
@@ -536,34 +541,20 @@ class LicenseService extends ChangeNotifier {
     }
   }
 
-  /// Attivazione con chiave offline (vendita diretta).
-  Future<bool> unlockWithKey(String rawKey) async {
-    final info = codec.tryParse(rawKey);
-    if (info == null || !info.isValid) return false;
-    kind = LicenseKind.offline;
-    expiresAt = info.expiresAt;
-    customerCode = info.customerCode;
-    await _writeSetting('license_key', rawKey.trim().toUpperCase());
-    _applyPriority();
-    await _persist();
-    notifyListeners();
-    return true;
-  }
-
   /// Sblocco di prova: disponibile solo in build debug.
   Future<bool> debugUnlock() async {
     if (!kDebugMode) return false;
     kind = LicenseKind.debug;
-    expiresAt = DateTime(9999, 12, 31);
-    await _persist();
+    await _persistKind();
     notifyListeners();
     return true;
   }
 
   /// Azzera prova e licenza: SOLO build debug (voce "Sviluppo" nascosta
   /// in "Altro"). Cancella `trial_started_at`, l'ancora (Keychain/file),
-  /// `license_*` e `iap_*`, poi riavvia lo stato del servizio. Nelle
-  /// build di release il metodo non fa nulla.
+  /// le impostazioni di licenza (incluse le righe storiche delle chiavi
+  /// offline) e `iap_*`, poi riavvia lo stato del servizio. Nelle build
+  /// di release il metodo non fa nulla.
   Future<void> debugReset() async {
     if (!kDebugMode) return;
     for (final key in const [
@@ -580,23 +571,19 @@ class LicenseService extends ChangeNotifier {
     await _trialAnchor.clear();
     kind = LicenseKind.none;
     trialStartedAt = null;
-    expiresAt = null;
-    customerCode = '';
     iapActive = false;
     iapVerifiedAt = null;
+    iapVerifiedNow = false;
+    subscriptionEnded = false;
+    paymentIssue = false;
     clockTampered = false;
     // Riavvia lo stato: nuova prova (ancora vuota) e priorità ricalcolata.
     await _loadState();
     notifyListeners();
   }
 
-  Future<void> _persist() async {
+  Future<void> _persistKind() async {
     await _writeSetting('license_kind', kind.name);
-    await _writeSetting(
-      'license_expires_at',
-      expiresAt?.toIso8601String() ?? '',
-    );
-    await _writeSetting('license_customer', customerCode);
   }
 
   Future<void> _persistIap() async {

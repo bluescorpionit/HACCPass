@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../core/constants/app_links.dart';
 import '../repositories/haccp_repository.dart';
 import '../services/attachment_service.dart';
 import '../services/backup_service.dart';
@@ -15,10 +16,12 @@ import 'guide_screen.dart';
 import 'license_screen.dart';
 import 'modules/extra_screens.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'printer_settings_screen.dart';
 import 'sensors/sensor_diagnostics_screen.dart';
 import 'storage/attachment_storage_screen.dart';
 import 'staff/staff_screen.dart';
 import 'temperature/equipment_editor.dart';
+import '../widgets/legal_links.dart' show openExternalUrl;
 
 /// Hub "Altro": anagrafiche, piano, guida, backup e licenza.
 class MoreScreen extends StatelessWidget {
@@ -138,9 +141,33 @@ class MoreScreen extends StatelessWidget {
       ),
       (
         'Licenza',
-        'Stato prova, acquisti e chiave offline',
+        'Stato prova e abbonamento (solo store)',
         Icons.key_outlined,
         () => _push(context, LicenseScreen(license: license)),
+      ),
+      // Prompt 11: motori di stampa etichette (Brother, Niimbot,
+      // generica ESC/POS/TSPL, stampa di sistema).
+      (
+        'Stampante',
+        'Brother QL, Niimbot, generica o stampa di sistema; prova e formati',
+        Icons.print_outlined,
+        () => _push(
+          context,
+          PrinterSettingsScreen(repository: repository),
+        ),
+      ),
+      // Prompt 11-bis, §6: link legali da un'unica costante (AppLinks).
+      (
+        'Informativa sulla privacy',
+        'Come trattiamo i tuoi dati: nessun account, nessun server',
+        Icons.privacy_tip_outlined,
+        () => openExternalUrl(AppLinks.privacyUrl),
+      ),
+      (
+        'Termini e condizioni',
+        'Condizioni d\u2019uso del servizio e dell\u2019abbonamento',
+        Icons.description_outlined,
+        () => openExternalUrl(AppLinks.termsUrl),
       ),
       // Prompt 8: spazio e sicurezza degli allegati.
       (

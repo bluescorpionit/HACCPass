@@ -28,8 +28,15 @@ nessun server, nessun account, tutti i dati restano in un database SQLite locale
   (opzionale) delle NC e merci respinte, logo aziendale in intestazione.
 - **Licenza**: prova 14 giorni (primaria gestita dallo store con offerta
   gratuita, riserva locale con "ancora" che sopravvive alla
-  reinstallazione — vedi `docs/acquisti.md`), IAP annuale, chiavi
-  offline. Licenza a vita solo via chiave offline, mai in-app.
+  reinstallazione — vedi `docs/acquisti.md`), solo abbonamento annuale
+  dello store: nessuna chiave offline dal Prompt 13.
+- **Stampa etichette** (Prompt 11): motori a scelta del cliente —
+  Brother QL (SDK ufficiale, Wi-Fi/USB), Niimbot (BLE, larghezza letta
+  dal dispositivo), stampante generica ESC/POS o TSPL (TCP 9100 o BLE)
+  e stampa di sistema — coda con avanzamento/annulla, etichetta di
+  prova, anteprima, più stampanti salvate; senza stampante l'app resta
+  pienamente utilizzabile (condivisione PDF). Dettagli e modelli
+  verificati/non verificati in `docs/stampanti.md`.
 
 ### Correzioni visive e accessibilità (v3)
 
@@ -145,11 +152,13 @@ merci respinte finiscono nell'appendice fotografica del dossier.
 - `Info.plist` con permessi in italiano (fotocamera, foto, contatti).
 - `PrivacyInfo.xcprivacy` con required-reason API; dichiarare "Dati non
   raccolti" in App Store Connect (nessun dato va a server dello sviluppatore).
-- **Chiavi di licenza offline nascoste su iOS** (guideline 3.1.1): il campo
-  chiave esiste solo su Android/desktop.
-- Paywall con "Ripristina acquisti" (obbligatorio) e prezzo dallo store.
-  Su iOS configurare **solo l'abbonamento annuale** (gruppo dedicato),
-  niente licenza a vita.
+- **Chiavi di licenza offline rimosse** (Prompt 13): licenza solo store,
+  nessun campo chiave nell'app; per regali e prove usare i codici
+  promozionali degli store ("Hai un codice?" su iOS apre il riscatto
+  di StoreKit).
+- Paywall con "Ripristina acquisti" (obbligatorio), "Gestisci
+  abbonamento" e prezzo dallo store. Su iOS configurare **solo
+  l'abbonamento annuale** (gruppo dedicato), niente licenza a vita.
 - Google Drive = "Collega", non "Accedi" (guideline 4.8: nessun account).
 - Foglio di condivisione su iPad: `sharePositionOrigin` sempre passato.
 - Pipeline CI documentata in `.github/workflows/ios-testflight.yml`
@@ -160,11 +169,10 @@ merci respinte finiscono nell'appendice fotografica del dossier.
 ```
 flutter pub get && flutter run        # sviluppo (launch.json include il secret dev)
 flutter analyze && flutter test       # verifiche
-tool/build_release.bat                # release Android: richiede BH_LICENSE_SECRET
+tool/build_release.bat                # release Android: richiede BH_ANCHOR_SECRET
                                       # e GOOGLE_SERVER_CLIENT_ID come variabili
                                       # d'ambiente + android/key.properties
-flutter build ipa --release --dart-define=BH_LICENSE_SECRET=<SEGRETO>  # iOS (macOS)
-dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetime  # chiave
+flutter build ipa --release --dart-define=BH_ANCHOR_SECRET=<SEGRETO>  # iOS (macOS)
 ```
 
 ## Configurazione manuale (a carico del titolare)
@@ -184,8 +192,9 @@ dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetim
 
 1. Bundle ID, certificati, profilo; record app; screenshot iPhone (+ iPad se
    supportato) in italiano.
-2. **Un solo abbonamento annuale** (es. 39 €/anno) con testi in italiano;
-   paywall con prezzo, durata, rinnovo, Termini/Privacy, Ripristina.
+2. **Un solo abbonamento annuale** (49 €/anno, offerta introduttiva prova
+   gratuita 14 giorni) con testi in italiano; paywall con prezzo,
+   durata, rinnovo, Termini/Privacy, Ripristina.
 3. Small Business Program (commissione 15%) da richiedere.
 4. Etichette privacy "Dati non raccolti"; pagina privacy e supporto online.
 5. Note per la revisione: nessun account richiesto; Google solo come
@@ -205,11 +214,15 @@ sistema (nessun permesso galleria), `POST_NOTIFICATIONS` dichiarato.
 ### Acquisti in-app
 
 ID prodotto allineato all'identificativo: `it.bluescorpion.haccpass.annual`
-(abbonamento annuale 39 € con offerta di prova gratuita di 14 giorni,
-come descritto in `docs/acquisti.md`). **Nessun prodotto a vita negli
-store**: la licenza a vita resta solo come chiave offline diretta.
-Build di release SEMPRE con `--dart-define=BH_LICENSE_SECRET=<valore>`:
-con segreto vuoto l'app si rifiuta di avviarsi. QR attrezzature: schema
+(abbonamento annuale 49 € con offerta di prova gratuita di 14 giorni,
+come descritto in `docs/acquisti.md`). **Licenza solo store dal Prompt
+13**: nessuna chiave offline, nessun prodotto a vita (il codice storico
+delle chiavi è in `tool/archive/`); per regali e prove ai clienti usare
+i codici promozionali degli store.
+Build di release SEMPRE con `--dart-define=BH_ANCHOR_SECRET=<valore>`
+(segreto del MAC dell'ancora della prova; accettato anche il vecchio
+`BH_LICENSE_SECRET` come alias): con segreto vuoto l'app si rifiuta di
+avviarsi. QR attrezzature: schema
 attuale `haccpass://`, lo storico `bluehaccp://` resta valido.
 
 ## Struttura
@@ -220,7 +233,8 @@ lib/
     constants/haccp_rules.dart       # soglie, preset, allergeni, livelli
     constants/business_templates.dart# 11 modelli di attività per il wizard
     database/app_database.dart       # SQLite v3, migrazioni v1->v2->v3
-    license/license_codec.dart       # verifica chiavi offline (Dart puro)
+    license/app_integrity.dart      # segreto dell'ancora (BH_ANCHOR_SECRET)
+    license/trial_anchor.dart       # ancora della prova (anti-reinstallazione)
     theme/app_theme.dart             # design system, HaccpColors
     utils/format.dart                # formattazione it
   models/haccp_models.dart           # modelli + Attachment
@@ -235,8 +249,9 @@ lib/
     sync_service.dart                # coda di caricamento
     reminder_service.dart            # notifiche locali (timezone)
     pdf_service.dart                 # dossier, piani, etichette, QR
-    license_service.dart             # prova, IAP, chiavi offline
-tool/license_keygen.dart
+    printing/                        # motori etichette (Prompt 11): brother,
+                                     # niimbot, generica ESC/POS/TSPL, sistema
+    license_service.dart             # prova, abbonamento store (EntitlementSource)
 .github/workflows/ios-testflight.yml
 ```
 
@@ -257,7 +272,9 @@ flutter test
 ```
 
 Coprono: stati pulizie, livelli infestanti, conformità temperature per
-categoria, termometri, codec licenza, **validazione P.IVA**, **modelli di
+categoria, termometri, **ancora della prova e licenza store-only**
+(`trial_anchor_test`, `license_service_test`, `license_restore_test`,
+`license_screen_test`), **validazione P.IVA**, **modelli di
 attività e merge senza duplicati**, **cifratura backup** (roundtrip, password
 errata, salt/nonce) e **fix di layout** (`layout_fixes_test.dart`: Scaffold
 nelle schermate pushate, nessun overflow a 360×640 con scala 1.15, fogli
@@ -308,4 +325,4 @@ c'è l'opzione "Backup completo con allegati" in streaming. Dettagli in
 
 Vedi "Configurazione manuale" sopra: progetto Google Cloud, App Store
 Connect, firma, `applicationId`, pagina privacy. Compilare sempre con
-`--dart-define=BH_LICENSE_SECRET=...`.
+`--dart-define=BH_ANCHOR_SECRET=...`.

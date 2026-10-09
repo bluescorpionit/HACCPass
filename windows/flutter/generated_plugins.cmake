@@ -4,9 +4,9 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_windows
-  flutter_blue_plus_winrt
   flutter_secure_storage_windows
   flutter_timezone
+  permission_handler_windows
   printing
   share_plus
   url_launcher_windows

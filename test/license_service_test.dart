@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'package:haccpass/core/license/entitlement_source.dart';
-import 'package:haccpass/core/license/license_codec.dart';
 import 'package:haccpass/core/license/trial_anchor.dart';
 import 'package:haccpass/services/license_service.dart';
 
@@ -213,19 +212,15 @@ void main() {
       expect(service.canWrite, isFalse);
     });
 
-    test('chiave offline valida vince sull\u2019abbonamento', () async {
-      // Prompt 12, C.2: la riga license_kind del database non basta
-      // più: serve la CHIAVE valida (rivalidata con l'HMAC), con
-      // scadenza e cliente derivati dalla chiave stessa.
-      final codec = LicenseCodec(secret: LicenseService.appSecret);
+    test('righe offline legacy: nessuna licenza, l\u2019abbonamento vince',
+        () async {
+      // Prompt 13: le chiavi offline non esistono più. Le righe residue
+      // (magari manomesse) non concedono nulla e vengono ripulite.
       final settings = _MemSettings()
         ..map['license_kind'] = 'offline'
-        ..map['license_key'] = codec.generate(
-              customerCode: 'CLIENTE1',
-              expiresAt: DateTime.now().add(const Duration(days: 300)),
-            )
-        ..map['license_expires_at'] =
-            DateTime.now().add(const Duration(days: 300)).toIso8601String()
+        ..map['license_key'] = 'BH1-CLIENTE1-20991231-DEADBEEF'
+        ..map['license_expires_at'] = '9999-12-31T00:00:00.000'
+        ..map['license_customer'] = 'TRUFFATORE'
         ..map['iap_active'] = '1';
       final service = build(
         settings,
@@ -235,9 +230,13 @@ void main() {
       );
       await service.initialize();
 
-      expect(service.kind, LicenseKind.offline);
+      expect(service.kind, LicenseKind.iap,
+          reason: 'solo lo store decide, mai le righe offline');
       expect(service.canWrite, isTrue);
-      expect(service.chipLabel, startsWith('Licenza attiva'));
+      expect(settings.map['license_key'], '');
+      expect(settings.map['license_expires_at'], '');
+      expect(settings.map['license_customer'], '');
+      expect(service.chipLabel, 'Abbonamento attivo');
     });
 
     test('priorità: abbonamento sopra la prova locale scaduta', () async {
@@ -277,9 +276,48 @@ void main() {
       expect(service.iapActive, isTrue);
       expect(service.kind, LicenseKind.iap);
       expect(service.canWrite, isTrue);
-      expect(service.expiresAt, isNull,
-          reason: 'l\u2019abbonamento non deve avere scadenze calcolate');
+      expect(service.iapVerifiedNow, isTrue);
+      expect(service.subscriptionEnded, isFalse);
       expect(service.trialStartedAt!.isAtSameMomentAs(trialStart!), isTrue);
+    });
+
+    test('revoca: subscriptionEnded e messaggio dedicato', () async {
+      final settings = _MemSettings()
+        ..map['license_kind'] = 'iap'
+        ..map['iap_active'] = '1'
+        ..map['trial_started_at'] =
+            DateTime.now().subtract(const Duration(days: 20)).toIso8601String()
+        ..map['iap_verified_at'] =
+            DateTime.now().subtract(const Duration(days: 1)).toIso8601String();
+      final service = build(
+        settings,
+        source: _FakeEntitlement(
+          EntitlementState(active: false, verifiedNow: true),
+        ),
+      );
+      await service.initialize();
+
+      expect(service.iapActive, isFalse);
+      expect(service.subscriptionEnded, isTrue,
+          reason: 'lo store ha detto che non c\u2019è più abbonamento');
+      expect(service.canWrite, isFalse);
+    });
+
+    test('evento pending: avviso di pagamento, poi risolto', () async {
+      final service = build(_MemSettings());
+      await service.initialize();
+
+      await service.handlePurchasesForTest(
+        [_purchase(PurchaseStatus.pending)],
+      );
+      expect(service.paymentIssue, isTrue);
+
+      await service.handlePurchasesForTest(
+        [_purchase(PurchaseStatus.purchased)],
+      );
+      expect(service.paymentIssue, isFalse,
+          reason: 'il pagamento andato a buon fine risolve l\u2019avviso');
+      expect(service.iapActive, isTrue);
     });
 
     test('acquisto di un prodotto sconosciuto non attiva nulla', () async {
@@ -331,6 +369,22 @@ void main() {
       expect(service.kind, LicenseKind.trial);
       expect(service.iapActive, isFalse);
       expect(service.trialActive, isTrue);
+    });
+
+    test('debugUnlock: sblocco disponibile solo nelle build debug',
+        () async {
+      final service = build(_MemSettings());
+      await service.initialize();
+
+      // Nei test (come in `flutter run`) kDebugMode è true: lo sblocco
+      // funziona. In release il metodo non fa nulla: il blocco è la
+      // costante compile-time kDebugMode, verificata con la build di
+      // release (nessuna via di sblocco fuori dallo store).
+      final ok = await service.debugUnlock();
+      expect(ok, isTrue);
+      expect(service.kind, LicenseKind.debug);
+      expect(service.canWrite, isTrue);
+      expect(service.chipLabel, 'Sblocchi di prova (debug)');
     });
   });
 }

@@ -1,21 +1,37 @@
 @echo off
 REM Build di release Android (appbundle) - nessun segreto nel repository
-REM (Prompt 10, E). Richiede come variabili d'ambiente:
-REM   BH_LICENSE_SECRET        segreto HMAC delle chiavi di licenza
-REM   GOOGLE_SERVER_CLIENT_ID  OAuth Web client ID (obbligatorio su Android)
+REM (Prompt 13). Richiede come variabili d'ambiente:
+REM   BH_ANCHOR_SECRET          segreto del MAC dell'ancora della prova
+REM                             (protezione LEGGERA: sta nel binario e NON
+REM                             protegge nessuna licenza, che dipende solo
+REM                             dallo store). Accettato anche il vecchio
+REM                             nome BH_LICENSE_SECRET come alias.
+REM   GOOGLE_SERVER_CLIENT_ID   OAuth Web client ID (obbligatorio su Android)
 REM Serve inoltre la firma di release in android\key.properties (vedi
 REM docs\identificativi.md): senza di essa gradle fallisce con messaggio
 REM chiaro, MAI con un ripiego sulla chiave di debug.
 
 setlocal
 
-if "%BH_LICENSE_SECRET%"=="" (
-    echo ERRORE: manca la variabile d'ambiente BH_LICENSE_SECRET.
+set "ANCHOR_SECRET=%BH_ANCHOR_SECRET%"
+set "SECRET_NAME=BH_ANCHOR_SECRET"
+if "%ANCHOR_SECRET%"=="" (
+    if not "%BH_LICENSE_SECRET%"=="" (
+        set "ANCHOR_SECRET=%BH_LICENSE_SECRET%"
+        set "SECRET_NAME=BH_LICENSE_SECRET (alias storico: rinominare in BH_ANCHOR_SECRET)"
+    )
+)
+
+if "%ANCHOR_SECRET%"=="" (
+    echo ERRORE: manca la variabile d'ambiente BH_ANCHOR_SECRET.
     echo Impostala prima di compilare, ad esempio:
-    echo     set BH_LICENSE_SECRET=^<valore^>
-    echo Il valore va conservato insieme alla keystore (docs\identificativi.md).
+    echo     set BH_ANCHOR_SECRET=^<valore^>
+    echo Viene accettato anche il vecchio BH_LICENSE_SECRET come alias.
+    echo Il valore serve solo per il MAC dell'ancora della prova.
     exit /b 1
 )
+
+echo Uso il segreto da: %SECRET_NAME%
 
 if "%GOOGLE_SERVER_CLIENT_ID%"=="" (
     echo ERRORE: manca la variabile d'ambiente GOOGLE_SERVER_CLIENT_ID.
@@ -33,7 +49,7 @@ if not exist "%~dp0..\android\key.properties" (
 )
 
 flutter build appbundle --release ^
-    --dart-define=BH_LICENSE_SECRET="%BH_LICENSE_SECRET%" ^
+    --dart-define=BH_ANCHOR_SECRET="%ANCHOR_SECRET%" ^
     --dart-define=GOOGLE_SERVER_CLIENT_ID="%GOOGLE_SERVER_CLIENT_ID%"
 
 endlocal

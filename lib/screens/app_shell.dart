@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../repositories/haccp_repository.dart';
 import '../services/backup_service.dart';
 import '../services/license_service.dart';
-import '../services/printer_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/common_widgets.dart';
 import 'checks_hub_screen.dart';
@@ -25,7 +24,6 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.repository,
-    required this.printerService,
     required this.license,
     required this.sync,
     required this.backup,
@@ -34,7 +32,6 @@ class AppShell extends StatefulWidget {
   });
 
   final HaccpRepository repository;
-  final PrinterService printerService;
   final LicenseService license;
   final SyncService sync;
   final BackupService backup;

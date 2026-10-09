@@ -40,6 +40,16 @@
 		<string>Consenti la scansione Bluetooth per trovare e collegare i sensori di temperatura Govee delle tue attrezzature.</string>
 		<key>NSBluetoothPeripheralUsageDescription</key>
 		<string>Consenti la scansione Bluetooth per trovare e collegare i sensori di temperatura Govee delle tue attrezzature.</string>
+		<!-- Stampanti di etichette (Prompt 11): ricerca Brother/Niimbot
+		     sulla rete locale e stampa TCP. -->
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>Consenti l'accesso alla rete locale per trovare e usare la stampante di etichette collegata al Wi-Fi.</string>
+		<key>NSBonjourServices</key>
+		<array>
+			<string>_ipp._tcp</string>
+			<string>_printer._tcp</string>
+			<string>_pdl-datastream._tcp</string>
+		</array>
 		<!-- Google Sign-In (solo archivio Drive, non accesso all'app):
 	     inserire il reversed client ID del progetto Google Cloud. -->
 		<!-- <key>CFBundleURLTypes</key>

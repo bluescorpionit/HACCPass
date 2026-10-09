@@ -6,6 +6,7 @@ import '../../services/license_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/reminder_service.dart';
 import '../../services/onboarding/onboarding_controller.dart';
+import '../../services/printing/print_label_flow.dart';
 import '../../services/sync_service.dart';
 import '../lots_screen.dart' show PdfPreviewScreen;
 import 'onboarding_steps.dart';
@@ -145,20 +146,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _testPrint() async {
+    // Persiste subito il formato scelto: il coordinatore legge le
+    // impostazioni salvate.
+    await controller.saveLabelFormat();
     final pdf = PdfService(
       repository: widget.repository,
       license: widget.license,
     );
     final bytes = await pdf.buildTestLabel(controller.labelFormat);
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PdfPreviewScreen(
-          title: 'Etichetta di prova',
-          bytes: bytes,
-          fileName: 'HACCP_EtichettaProva_${_stamp()}.pdf',
-        ),
-      ),
+    // Stampa con la stampante configurata; se manca, il dialogo propone
+    // di configurarla o di condividere il PDF (Prompt 11, §4).
+    await showPrintLabelDialog(
+      context,
+      repository: widget.repository,
+      pdfBytes: bytes,
+      title: 'Etichetta di prova',
+      pdfFileName: 'HACCP_EtichettaProva_${_stamp()}.pdf',
     );
   }
 

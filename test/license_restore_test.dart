@@ -4,23 +4,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:haccpass/core/license/entitlement_source.dart';
-import 'package:haccpass/core/license/license_codec.dart';
 import 'package:haccpass/core/license/trial_anchor.dart';
 import 'package:haccpass/services/license_service.dart';
 
-/// Prompt 12, C.2: le righe di licenza del database NON sono credute.
-/// La chiave offline viene rivalidata con l'HMAC a ogni caricamento
-/// (scadenza e cliente derivati SOLO dalla chiave); iap_verified_at nel
-/// futuro o oltre la tolleranza viene ignorato.
+/// Prompt 13, §1.1 (compatibilità dati) + Prompt 12, C.2: le righe di
+/// licenza storiche del database NON concedono più nulla (le chiavi
+/// offline sono state rimosse): `license_kind = 'offline'` viene trattato
+/// come prova e le chiavi legacy vengono ripulite al primo avvio.
+/// `iap_verified_at` nel futuro o oltre la tolleranza viene ignorato.
 void main() {
   debugDefaultTargetPlatformOverride = TargetPlatform.windows;
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const secret = 'test-secret-123';
-  // La chiave offline va generata col MEDESIMO segreto del servizio:
-  // nei test BH_LICENSE_SECRET non è definito (consentito in debug), e
-  // la firma deve tornare con il codec del servizio.
-  final codec = LicenseCodec(secret: LicenseService.appSecret);
 
   tearDown(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -45,77 +41,66 @@ void main() {
     );
   }
 
-  group('license_kind = offline letto dal database', () {
-    test('chiave valida: scadenza e cliente derivati dalla CHIAVE, non dal DB',
+  group('license_kind = offline ereditato (Prompt 13)', () {
+    test('righe offline manomesse: mai concesso nulla, stato prova',
         () async {
-      final key = codec.generate(
-        customerCode: 'CLIENTE9',
-        expiresAt: DateTime(2031, 6, 30),
-      );
-      final service = build({
+      final settings = {
         'license_kind': 'offline',
-        'license_key': key,
+        'license_key': 'BH1-CLIENTE9-20310630-DEADBEEF01',
         // RIGHE MANOMETTUTE: devono essere ignorate.
         'license_expires_at': '9999-12-31T00:00:00.000',
         'license_customer': 'TRUFFATORE',
-      });
-      await service.initialize();
-
-      expect(service.kind, LicenseKind.offline);
-      expect(service.customerCode, 'CLIENTE9',
-          reason: 'il codice cliente deriva dalla chiave firmata');
-      expect(service.expiresAt, DateTime(2031, 6, 30, 23, 59, 59),
-          reason: 'la scadenza del database (9999) non è creduta');
-      expect(service.canWrite, isTrue);
-    });
-
-    test('chiave assente con license_expires_at a vita: stato prova',
-        () async {
-      // Il caso del punto 2 del Prompt 12: backup manomesso.
-      final service = build({
-        'license_kind': 'offline',
-        'license_expires_at': '9999-12-31T00:00:00.000',
-        'license_customer': 'TRUFFATORE',
-        'license_key': '',
-      });
+      };
+      final service = build(settings);
       await service.initialize();
 
       expect(service.kind, LicenseKind.trial,
-          reason: 'senza chiave valida nessuna licenza offline');
-      expect(service.isLifetime, isFalse,
-          reason: 'la scadenza a vita scritta nel database non è creduta');
+          reason: 'nessuna licenza offline esiste più');
+      // La prova è appena iniziata (nessuna data precedente): si può
+      // scrivere, MA per la prova, non per la licenza manomessa.
+      expect(service.canWrite, isTrue);
+      expect(service.trialActive, isTrue);
     });
 
-    test('chiave firma non valida: stato prova, mai la scadenza del DB',
+    test('righe offline ripulite al primo avvio (migrazione silenziosa)',
         () async {
-      final service = build({
+      final settings = {
         'license_kind': 'offline',
-        // Chiave ben formata ma con firma sbagliata (segreto diverso).
         'license_key': 'BH1-CLIENTE9-20310630-DEADBEEF01',
         'license_expires_at': '9999-12-31T00:00:00.000',
-      });
+        'license_customer': 'TRUFFATORE',
+      };
+      final service = build(settings);
       await service.initialize();
 
-      expect(service.kind, LicenseKind.trial);
-      expect(service.expiresAt, isNull);
-      expect(service.isLifetime, isFalse);
+      expect(settings['license_key'], '',
+          reason: 'la chiave legacy viene pulita');
+      expect(settings['license_expires_at'], '',
+          reason: 'la scadenza legacy viene pulita');
+      expect(settings['license_customer'], '',
+          reason: 'il cliente legacy viene pulito');
+      expect(settings['license_kind'], isNot('offline'),
+          reason: 'il kind risolto viene riscritto');
     });
 
-    test('chiave scaduta: prova, mai la licenza offline del DB', () async {
-      final key = codec.generate(
-        customerCode: 'CLIENTE9',
-        expiresAt: DateTime(2020, 1, 1),
-      );
-      final service = build({
+    test('abbonamento attivo vince sulle righe offline residue', () async {
+      final settings = {
         'license_kind': 'offline',
-        'license_key': key,
+        'license_key': 'BH1-CLIENTE9-20310630-DEADBEEF01',
         'license_expires_at': '9999-12-31T00:00:00.000',
-      });
+        'iap_active': '1',
+        'iap_verified_at': DateTime.now().toIso8601String(),
+      };
+      final service = build(
+        settings,
+        entitlement: () =>
+            const EntitlementState(active: true, verifiedNow: true),
+      );
       await service.initialize();
 
-      expect(service.kind, LicenseKind.trial,
-          reason: 'chiave scaduta: cade sulla prova, la scadenza del DB non conta');
-      expect(service.isLifetime, isFalse);
+      expect(service.kind, LicenseKind.iap);
+      expect(service.canWrite, isTrue);
+      expect(settings['license_key'], '');
     });
   });
 

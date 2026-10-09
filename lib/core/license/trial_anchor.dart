@@ -19,8 +19,10 @@
 ///   ripristina: è un miglioramento best-effort, documentato in
 ///   `docs/acquisti.md`.
 ///
-/// Contenuto firmato con HMAC-SHA256 (stesso segreto delle licenze,
-/// `LicenseService.appSecret`; vuoto consentito solo in debug):
+/// Contenuto firmato con HMAC-SHA256 (segreto di integrità
+/// `AppIntegrity.anchorSecret`, nome in build `BH_ANCHOR_SECRET` con
+/// `BH_LICENSE_SECRET` accettato come alias; vuoto consentito solo in
+/// debug):
 /// `{"v":1,"start":"<ISO UTC>","lastSeen":"<ISO UTC>","mac":"<base64>"}`.
 /// Un contenuto con MAC non valido è trattato come assente e registrato
 /// come "alterato".

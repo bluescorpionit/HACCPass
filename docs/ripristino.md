@@ -64,8 +64,9 @@ comporta il backup automatico. Riferimento: Prompt 12.
   `license_customer`, `license_key`, `iap_active`, `iap_verified_at`,
   `trial_started_at` sono letti dal telefono **prima** della
   sostituzione del database e riscritti dopo: un backup non può
-  importare (né manomettere) lo stato di licenza. La chiave offline è
-  comunque rivalidata con l'HMAC a ogni caricamento e la data della
+  importare (né manomettere) lo stato di licenza. Dal Prompt 13 le
+  righe delle vecchie chiavi offline non concedono comunque nulla
+  (licenza solo store) e la data della
   prova non torna mai indietro (vince la più antica, regola dell'ancora).
 - **Token OAuth** (google_sign_in): vivono nel secure storage di
   sistema, mai nel database né nei backup.

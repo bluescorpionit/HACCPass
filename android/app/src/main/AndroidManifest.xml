@@ -4,10 +4,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
-    <!-- Sensori Govee H5179 via BLE: scansione senza geolocalizzazione
-         (neverForLocation) e connessione; per Android <= 11 la scansione
-         BLE richiede la posizione. Richiesti solo dalla diagnostica
-         sensori / prima associazione. -->
+    <!-- Sensori Govee H5179 e stampanti etichette (Prompt 11) via BLE:
+         scansione senza geolocalizzazione (neverForLocation) e
+         connessione; per Android <= 11 la scansione BLE richiede la
+         posizione. Richiesti solo dalla diagnostica sensori, dalla
+         ricerca stampanti e alla prima associazione: mai all'avvio. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s"/>
@@ -18,6 +19,9 @@
         android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="30"/>
+    <!-- Stampante generica e Brother via rete locale (TCP 9100 / SNMP). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
         android:label="HACCPass"
         android:name="${applicationName}"

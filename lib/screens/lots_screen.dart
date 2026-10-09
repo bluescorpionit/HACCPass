@@ -11,6 +11,7 @@ import '../repositories/haccp_repository.dart';
 import '../services/license_service.dart';
 import '../services/attachment_service.dart';
 import '../services/pdf_service.dart';
+import '../services/printing/print_label_flow.dart';
 import '../widgets/attachment_section.dart';
 import '../widgets/common_widgets.dart';
 import 'goods/products_screen.dart';
@@ -464,8 +465,16 @@ class _LotCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showLabel(context),
+                    onPressed: () => _printLabel(context),
                     icon: const Icon(Icons.print_outlined),
+                    label: const Text('Stampa'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showLabel(context),
+                    icon: const Icon(Icons.qr_code_2),
                     label: const Text('Etichetta'),
                   ),
                 ),
@@ -494,6 +503,25 @@ class _LotCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Stampa l'etichetta del lotto con la stampante configurata (Prompt
+  /// 11, §4): nessuna stampante → si configura o si condivide il PDF.
+  Future<void> _printLabel(BuildContext context) async {
+    if (!license.ensureLicensed(context)) return;
+
+    final pdf = PdfService(repository: repository, license: license);
+    final bytes = await pdf.buildLotLabel(lot);
+    if (!context.mounted) return;
+
+    await showPrintLabelDialog(
+      context,
+      repository: repository,
+      pdfBytes: bytes,
+      title: 'Stampa etichetta ${lot.code}',
+      pdfFileName:
+          'HACCP_Etichetta_${sanitizeFileName(lot.code)}_${_todayStamp()}.pdf',
     );
   }
 

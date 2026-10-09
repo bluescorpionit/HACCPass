@@ -1,16 +1,21 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../core/constants/app_links.dart';
 import '../services/license_service.dart';
 import '../widgets/common_widgets.dart' show screenPadding;
+import '../widgets/legal_links.dart';
 
-/// Paywall: prova gratuita dello store, abbonamento annuale e chiave di
-/// licenza offline (vendita diretta, nascosta su iOS).
+/// Paywall store-only (Prompt 13): prova gratuita dello store,
+/// abbonamento annuale, ripristino, gestione dell'abbonamento e codici
+/// promozionali. Nessuna chiave di licenza offline.
 ///
 /// Testi e prezzi sono sempre letti dallo store: mai importi o durate
-/// scritti a mano.
+/// scritti a mano. Gli stati mostrati sono solo quelli deducibili dal
+/// plugin, mai scadenze inventate.
 class LicenseScreen extends StatefulWidget {
   const LicenseScreen({super.key, required this.license});
 
@@ -21,14 +26,39 @@ class LicenseScreen extends StatefulWidget {
 }
 
 class _LicenseScreenState extends State<LicenseScreen> {
-  final keyController = TextEditingController();
-
   LicenseService get service => widget.license;
 
-  @override
-  void dispose() {
-    keyController.dispose();
-    super.dispose();
+  /// Pagina di gestione abbonamento dello store (esterna all'app).
+  String get _manageSubscriptionUrl {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return 'https://apps.apple.com/account/subscriptions';
+    }
+    return 'https://play.google.com/store/account/subscriptions'
+        '?sku=${LicenseProductIds.annual}&package=it.bluescorpion.haccpass';
+  }
+
+  Future<void> _openManageSubscription() async {
+    try {
+      await launchUrl(
+        Uri.parse(_manageSubscriptionUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // Nessun browser disponibile: il pulsante resta mutamente inutile,
+      // l'utente può aprire il link dallo store manualmente.
+    }
+  }
+
+  /// Codici promozionali Apple: foglio di riscatto di StoreKit (solo iOS).
+  Future<void> _presentCodeRedemptionSheet() async {
+    try {
+      final addition = InAppPurchase.instance
+          .getPlatformAddition<InAppPurchaseStoreKitPlatformAddition>();
+      await addition.presentCodeRedemptionSheet();
+    } catch (_) {
+      // Il foglio non è disponibile (es. nessuno StoreKit): silenzio,
+      // resta il canale della pagina gestione abbonamento.
+    }
   }
 
   @override
@@ -111,16 +141,10 @@ class _LicenseScreenState extends State<LicenseScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                _manageSubscriptionButton(theme),
               ] else ...[
                 _iapSection(context, service, theme),
-                const SizedBox(height: 16),
-                // Le chiavi offline restano nascoste su iOS: lo sblocco con
-                // codici immessi nell'app pu\u00F2 violare la guideline 3.1.1
-                // di Apple. Abilitate solo su Android e desktop.
-                if (!Platform.isIOS) ...[
-                  _offlineKeySection(context, service, theme),
-                  const SizedBox(height: 16),
-                ],
                 if (kDebugMode) ...[
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
@@ -140,6 +164,12 @@ class _LicenseScreenState extends State<LicenseScreen> {
                   ),
                 ],
               ],
+              // Avviso di pagamento: non bloccante, con gestione directa
+              // dello store (Prompt 13, §2.5).
+              if (service.paymentIssue) ...[
+                const SizedBox(height: 12),
+                _paymentIssueCard(context, service, theme),
+              ],
               if (service.lastError?.isNotEmpty == true) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -147,10 +177,60 @@ class _LicenseScreenState extends State<LicenseScreen> {
                   style: TextStyle(color: theme.colorScheme.error),
                 ),
               ],
+              // Link legali (Prompt 11-bis, §6): fonti unica AppLinks.
+              const SizedBox(height: 20),
+              const LegalLinksText(),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => openExternalUrl(AppLinks.privacyUrl),
+                icon: const Icon(Icons.privacy_tip_outlined, size: 18),
+                label: const Text('Informativa sulla privacy'),
+              ),
+              TextButton.icon(
+                onPressed: () => openExternalUrl(AppLinks.termsUrl),
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text('Termini e condizioni'),
+              ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _manageSubscriptionButton(ThemeData theme) => OutlinedButton.icon(
+        onPressed: _openManageSubscription,
+        icon: const Icon(Icons.open_in_new),
+        label: const Text('Gestisci abbonamento'),
+      );
+
+  Widget _paymentIssueCard(
+    BuildContext context,
+    LicenseService service,
+    ThemeData theme,
+  ) {
+    return Card(
+      color: theme.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pagamento in sospeso',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Lo store non \u00E8 riuscito ad addebitare il rinnovo. '
+              'Verifica il metodo di pagamento per mantenere l\u2019accesso.',
+            ),
+            const SizedBox(height: 10),
+            _manageSubscriptionButton(theme),
+          ],
+        ),
+      ),
     );
   }
 
@@ -160,28 +240,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
     ThemeData theme,
   ) {
     final colors = theme.colorScheme;
-    final (icon, title, message) = service.canWrite
-        ? (
-            Icons.verified_outlined,
-            service.isLifetime ? 'Licenza a vita attiva' : 'Licenza attiva',
-            service.kind == LicenseKind.trial
-                ? 'Prova gratuita completa: ${service.trialDaysLeft} giorni rimanenti.'
-                : 'Tutte le funzioni sono sbloccate.'
-          )
-        : service.clockTampered
-            ? (
-                Icons.schedule_outlined,
-                'Orologio del dispositivo alterato',
-                'Verifica data e ora del telefono. I tuoi dati sono al '
-                    'sicuro: puoi consultarli ma non registrare nuove '
-                    'operazioni finch\u00E9 la data non \u00E8 corretta.'
-              )
-            : (
-                Icons.lock_outline,
-                'Prova scaduta',
-                'L\u2019app \u00E8 in sola lettura: puoi consultare i dati ma non '
-                    'registrare né esportare.'
-              );
+    final (icon, title, message) = _statusOf(service);
 
     return Card(
       color: service.canWrite ? null : colors.errorContainer,
@@ -211,27 +270,110 @@ class _LicenseScreenState extends State<LicenseScreen> {
     );
   }
 
+  /// Stato mostrato nella card: solo ciò che si sa dallo store, mai una
+  /// scadenza inventata.
+  (IconData, String, String) _statusOf(LicenseService service) {
+    if (service.canWrite) {
+      if (service.kind == LicenseKind.trial) {
+        return (
+          Icons.verified_outlined,
+          'Prova gratuita in corso',
+          'Prova completa: ${service.trialDaysLeft} giorni rimanenti.'
+        );
+      }
+      if (service.kind == LicenseKind.debug) {
+        return (
+          Icons.verified_outlined,
+          'Sblocchi di prova (debug)',
+          'Tutte le funzioni sono sbloccate (solo build debug).'
+        );
+      }
+      // Abbonamento: "attivo" o "in verifica" se si sta usando la
+      // tolleranza offline.
+      final title = service.iapVerifiedNow
+          ? 'Abbonamento attivo'
+          : 'In verifica (offline: ancora ${service.offlineToleranceDaysLeft} giorni)';
+      return (
+        Icons.verified_outlined,
+        title,
+        'Tutte le funzioni sono sbloccate.'
+      );
+    }
+    if (service.clockTampered) {
+      return (
+        Icons.schedule_outlined,
+        'Orologio del dispositivo alterato',
+        'Verifica data e ora del telefono. I tuoi dati sono al '
+            'sicuro: puoi consultarli ma non registrare nuove '
+            'operazioni finch\u00E9 la data non \u00E8 corretta.'
+      );
+    }
+    if (service.subscriptionEnded) {
+      return (
+        Icons.card_membership,
+        'Abbonamento scaduto o sospeso',
+        'Riattivalo da "Gestisci abbonamento" o effettua un nuovo '
+            'acquisto: nel frattempo l\u2019app \u00E8 in sola lettura.'
+      );
+    }
+    return (
+      Icons.lock_outline,
+      'Prova scaduta',
+      'L\u2019app \u00E8 in sola lettura: puoi consultare i dati ma non '
+          'registrare né esportare.'
+    );
+  }
+
   Widget _iapSection(
     BuildContext context,
     LicenseService service,
     ThemeData theme,
   ) {
     if (!service.iapAvailable) {
+      // Desktop (build di sviluppo): nessuno store, niente vendita.
+      if (service.isDesktop) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'La licenza si acquista dall\u2019app per Android o iPhone',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Su questo computer l\u2019app resta in prova locale e poi '
+                  'in sola lettura: \u00E8 una build di sviluppo.',
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Acquisti in-app non disponibili su questo dispositivo',
+                'Gli acquisti non sono disponibili ora',
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               const Text(
-                'Puoi sbloccare l\u2019app con una chiave di licenza fornita '
-                'dal fornitore (qui sotto).',
+                'Controlla la connessione e che sul telefono sia attivo '
+                'Google Play (o App Store), poi riprova.',
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => service.retryStoreInit(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Riprova'),
               ),
             ],
           ),
@@ -287,6 +429,23 @@ class _LicenseScreenState extends State<LicenseScreen> {
           icon: const Icon(Icons.restore),
           label: const Text('Ripristina acquisti'),
         ),
+        if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+          const SizedBox(height: 6),
+          TextButton.icon(
+            onPressed: _presentCodeRedemptionSheet,
+            icon: const Icon(Icons.redeem),
+            label: const Text('Hai un codice?'),
+          ),
+        ] else if (defaultTargetPlatform == TargetPlatform.android) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Hai un codice promozionale? Si riscatta dal Play Store.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -303,58 +462,5 @@ class _LicenseScreenState extends State<LicenseScreen> {
     } catch (_) {
       // Lo stato arriva dalla purchaseStream / lastError.
     }
-  }
-
-  Widget _offlineKeySection(
-    BuildContext context,
-    LicenseService service,
-    ThemeData theme,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Hai una chiave di licenza?',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Formato: BH1-CODICE-AAAAMMGG-FIRMA',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: keyController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Chiave di licenza',
-                hintText: 'BH1-XXXXX-20991231-ABC12',
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () async {
-                final ok = await service.unlockWithKey(keyController.text);
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      ok
-                          ? 'Licenza attivata. Grazie!'
-                          : 'Chiave non valida o scaduta.',
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.key),
-              label: const Text('Attiva chiave'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

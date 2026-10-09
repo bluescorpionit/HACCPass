@@ -24,6 +24,7 @@ dependencies:
   file_picker: ^10.1.9
   in_app_purchase: ^3.2.3
   in_app_purchase_android: ^0.5.3
+  in_app_purchase_storekit: ^0.4.13
   crypto: ^3.0.6
   flutter_secure_storage: ^9.2.2
   meta: ^1.18.0
@@ -43,8 +44,14 @@ dependencies:
   url_launcher: ^6.3.3
   # Factory FFI del DB: necessaria a runtime su desktop (Windows/Linux).
   sqflite_common_ffi: ^2.4.3
-  flutter_blue_plus: ^2.3.14
+  # fbp 1.x: richiesta da niim_blue_flutter 1.0.1 (le API usate dai
+  # sensori Govee e dalla stampa sono stabili tra 1.x e 2.x; docs/stampanti.md).
+  flutter_blue_plus: ^1.36.8
   google_mlkit_text_recognition: ^0.17.1
+  brother_native_print: ^0.6.2
+  niim_blue_flutter: ^1.0.1
+  permission_handler: ^12.0.1
+  image: ^4.7.1
 
 dev_dependencies:
   flutter_test:

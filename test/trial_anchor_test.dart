@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:haccpass/core/license/app_integrity.dart';
 import 'package:haccpass/core/license/trial_anchor.dart';
 
 /// Storage in memoria per i test dell'ancora.
@@ -24,6 +25,23 @@ class MemoryTrialAnchorStorage implements TrialAnchorStorage {
 
 void main() {
   const secret = 'test-secret-123';
+
+  group('AppIntegrity.anchorSecret (wiring BH_ANCHOR_SECRET)', () {
+    // Attivo solo quando il test gira con i dart-define attesi
+    // (verifica del Prompt 13):
+    //   flutter test test/trial_anchor_test.dart \
+    //     --dart-define=BH_ANCHOR_SECRET=test-anchor \
+    //     --dart-define=EXPECTED_ANCHOR=test-anchor
+    // e per l'alias storico:
+    //   flutter test test/trial_anchor_test.dart \
+    //     --dart-define=BH_LICENSE_SECRET=test-legacy \
+    //     --dart-define=EXPECTED_ANCHOR=test-legacy
+    test('il valore arriva da BH_ANCHOR_SECRET o dall\u2019alias', () {
+      const expected = String.fromEnvironment('EXPECTED_ANCHOR');
+      if (expected.isEmpty) return; // run normale: nessun wiring da verificare
+      expect(AppIntegrity.anchorSecret, expected);
+    });
+  });
 
   TrialAnchor anchor(MemoryTrialAnchorStorage storage,
           {DateTime Function()? now}) =>

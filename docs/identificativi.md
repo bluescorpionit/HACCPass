@@ -15,8 +15,8 @@ publicata: dopo la pubblicazione l'identificativo non si può più cambiare.
 | macOS | Copyright | © 2026 Blue Scorpion. All rights reserved. |
 | Windows | `CompanyName` / `LegalCopyright` | Blue Scorpion / Copyright (C) 2026 Blue Scorpion. All rights reserved. |
 | Linux | `APPLICATION_ID` | `it.bluescorpion.haccpass` |
-| Acquisti in-app | Annuale | `it.bluescorpion.haccpass.annual` (39 €/anno, offerta con prova gratuita 14 giorni — vedi `docs/acquisti.md`) |
-| Acquisti in-app | A vita | **NON più offerto in-app** dal Prompt 10: resta solo la chiave offline `BH1-…` con data `99991231` (vendita diretta, nascosta su iOS). `LicenseProductIds.lifetime` è stato rimosso dal codice. |
+| Acquisti in-app | Annuale | `it.bluescorpion.haccpass.annual` (49 €/anno, offerta con prova gratuita 14 giorni — vedi `docs/acquisti.md`); **unico prodotto**: la licenza è solo store |
+| Acquisti in-app | A vita / chiavi offline | **Rimossi dal Prompt 13**: nessuna chiave `BH1-…` nell'app di release (codice storico in `tool/archive/`); per regali e prove usare i codici promozionali degli store |
 | QR attrezzature | Schema attuale | `haccpass://equipment/<id>` (generato nei PDF) |
 | QR attrezzature | Schema storico | `bluehaccp://equipment/<id>` — **mantenuto valido** per i QR già stampati nei test (entrambi nel manifest Android e nel parser `lib/core/deep_links.dart`) |
 
@@ -121,35 +121,52 @@ Da registrare poi:
   (registrare l'id su developer.apple.com) e acquisti in-app con gli
   stessi id prodotto.
 
-## Segreto di licenza (BH_LICENSE_SECRET)
+## Segreto dell'ancora della prova (BH_ANCHOR_SECRET)
 
-- Build di **release** con `BH_LICENSE_SECRET` vuoto: l'app **si rifiuta
-  di avviarsi** con errore esplicito (`license_service.dart`) — un segreto
-  vuoto renderebbe forgiabili le chiavi offline.
+Dal Prompt 13 le chiavi di licenza offline `BH1-…` **non esistono più**
+nell'app (codice storico in `tool/archive/`). Il segreto serve SOLO per
+il MAC dell'ancora della prova (`lib/core/license/app_integrity.dart`,
+usato da `TrialAnchor`):
+
+- **AVVERTENZA**: il valore è una protezione LEGGERA contro la
+  modifica casuale dell'ancora. Sta nel binario, non è un segreto
+  forte e **non protegge nessuna licenza**: la licenza dipende solo
+  dallo store (abbonamento `it.bluescorpion.haccpass.annual`).
+- Build di **release** con il valore vuoto: l'app **si rifiuta di
+  avviarsi** con errore esplicito (`AppIntegrity.assertConfigured`).
 - In **debug** resta consentito, con avviso in console.
+- **Alias di compatibilità**: se `BH_ANCHOR_SECRET` è vuoto viene usato
+  il vecchio `BH_LICENSE_SECRET` (le configurazioni esistenti —
+  `.vscode`, script — continuano a funzionare; meglio rinominarlo).
 
 ```
-flutter build apk --release --dart-define=BH_LICENSE_SECRET=<valore>
+flutter build apk --release --dart-define=BH_ANCHOR_SECRET=<valore>
 ```
-
-Il valore va conservato insieme alla keystore: serve per generare le
-chiavi offline (strumento `license_keygen`).
 
 ### AVVERTENZA: `dev-secret` in `.vscode/launch.json` e `settings.json`
 
 Le configurazioni VS Code usano un segreto **di solo sviluppo**
-(`dev-secret`) per comodità di `flutter run`. Quel valore è noto (sta
-nel repository): **NON va mai usato per build distribuite** — né
-TestFlight né Play né APK/IPA consegnati a clienti. Ogni build
-distribuita usa il segreto reale passato come variabile d'ambiente
-tramite `tool/build_release.bat` / `tool/build_release.sh` (vedi
-sotto).
+(`dev-secret`, passato come `BH_LICENSE_SECRET` e quindi accettato via
+alias) per comodità di `flutter run`. Quel valore è noto (sta nel
+repository): **NON va mai usato per build distribuite** — né TestFlight
+né Play né APK/IPA consegnati a clienti. Ogni build distribuita usa il
+segreto reale passato come variabile d'ambiente tramite
+`tool/build_release.bat` / `tool/build_release.sh` (vedi sotto).
 
 ### Script di build di release
 
 `tool/build_release.bat` (Windows) e `tool/build_release.sh`
 (Linux/macOS) richiedono come **variabili d'ambiente**
-`BH_LICENSE_SECRET` e `GOOGLE_SERVER_CLIENT_ID`, falliscono con
-messaggio chiaro se mancano (o se manca `android/key.properties`) e
-lanciano `flutter build appbundle --release --dart-define=...`.
-Nessun segreto è scritto negli script né nel repository.
+`BH_ANCHOR_SECRET` (accettato anche l'alias `BH_LICENSE_SECRET`) e
+`GOOGLE_SERVER_CLIENT_ID`, falliscono con messaggio chiaro se mancano
+(o se manca `android/key.properties`) e lanciano
+`flutter build appbundle --release --dart-define=...`. Nessun segreto
+è scritto negli script né nel repository.
+
+### Fine del flusso di generazione chiavi
+
+`tool/license_keygen.dart` e `LicenseCodec` sono archiviati in
+`tool/archive/` (con `README.md` che spiega la riattivazione): non
+compaiono più nelle build né nella suite di test. I codici promozionali
+degli store sostituiscono le chiavi per regali e prove ai clienti (vedi
+`docs/acquisti.md`).

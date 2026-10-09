@@ -1,14 +1,17 @@
-// Generatore di chiavi di licenza offline per Blue HACCP.
+// Generatore di chiavi di licenza offline — CODICE STORICO (Prompt 13).
 //
-// Uso:
-//   dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --days 365
-//   dart run tool/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetime
+// Le chiavi offline non sono più usate dall'app di release (la licenza
+// si acquista solo dagli store): questo generatore è archiviato qui,
+// fuori da lib/ e dalla suite di test, e non entra nelle build. È
+// riattivabile in caso di ripresa della vendita diretta (vedi
+// tool/archive/README.md).
 //
-// Il segreto deve coincidere con quello usato in build:
-//   flutter build apk --dart-define=BH_LICENSE_SECRET=<SEGRETO>
+// Uso (dalla radice del progetto):
+//   dart run tool/archive/license_keygen.dart --secret <SEGRETO> --customer BAR001 --days 365
+//   dart run tool/archive/license_keygen.dart --secret <SEGRETO> --customer BAR001 --lifetime
 import 'dart:io';
 
-import 'package:haccpass/core/license/license_codec.dart';
+import 'license_codec.dart';
 
 void main(List<String> args) {
   String? secret;

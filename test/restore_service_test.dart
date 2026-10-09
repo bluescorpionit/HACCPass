@@ -6,7 +6,6 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:haccpass/core/database/app_database.dart';
-import 'package:haccpass/core/license/license_codec.dart';
 import 'package:haccpass/repositories/haccp_repository.dart';
 import 'package:haccpass/services/backup_service.dart';
 import 'package:haccpass/services/restore_service.dart';
@@ -20,8 +19,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
-  const secret = 'test-secret-123';
-  final codec = LicenseCodec(secret: secret);
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('restore_test');
@@ -57,8 +54,8 @@ void main() {
       await targetDb.close();
     });
 
-    // Telefono di origine: abbonamento attivo + chiave offline + trial
-    // iniziato 10 giorni fa.
+    // Telefono di origine: abbonamento attivo + righe delle vecchie
+    // chiavi offline + trial iniziato 10 giorni fa.
     final oldTrial =
         DateTime.now().subtract(const Duration(days: 10)).toIso8601String();
     await source.setSetting('onboarding_done', '1');
@@ -67,9 +64,8 @@ void main() {
     await source
         .setSetting('iap_verified_at', DateTime.now().toIso8601String());
     await source.setSetting('trial_started_at', oldTrial);
-    final key = codec.generate(customerCode: 'CLIENTE1', expiresAt: DateTime(2050));
     await source.setSetting('license_kind', 'offline');
-    await source.setSetting('license_key', key);
+    await source.setSetting('license_key', 'BH1-CLIENTE1-20501231-DEADBEEF');
     await source.setSetting('license_expires_at', '2050-01-01T00:00:00.000');
     await source.setSetting('license_customer', 'CLIENTE1');
 

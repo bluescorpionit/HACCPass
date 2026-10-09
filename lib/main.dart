@@ -19,7 +19,6 @@ import 'services/backup_service.dart';
 import 'services/cloud/google_drive_provider.dart';
 import 'services/daily_backup.dart';
 import 'services/license_service.dart';
-import 'services/printer_service.dart';
 import 'services/reminder_service.dart';
 import 'services/restore_service.dart';
 import 'services/sync_service.dart';
@@ -95,7 +94,6 @@ Future<void> main() async {
     HaccpassApp(
       services: services,
       minimumSplash: minimumSplash,
-      printerService: DemoPrinterService(),
     ),
   );
 }
@@ -131,12 +129,10 @@ class HaccpassApp extends StatelessWidget {
     super.key,
     required this.services,
     required this.minimumSplash,
-    required this.printerService,
   });
 
   final Future<AppServices> services;
   final Future<void> minimumSplash;
-  final PrinterService printerService;
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +182,6 @@ class HaccpassApp extends StatelessWidget {
           }
           final loaded = snapshot.data!;
           return _Root(
-            printerService: printerService,
             repository: loaded.repository,
             license: loaded.license,
             attachments: loaded.attachments,
@@ -306,7 +301,6 @@ class _InAppSplashState extends State<_InAppSplash>
 class _Root extends StatefulWidget {
   const _Root({
     required this.repository,
-    required this.printerService,
     required this.license,
     required this.attachments,
     required this.reminders,
@@ -315,7 +309,6 @@ class _Root extends StatefulWidget {
   });
 
   final HaccpRepository repository;
-  final PrinterService printerService;
   final LicenseService license;
   final AttachmentService attachments;
   final ReminderService reminders;
@@ -487,7 +480,6 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
 
     return AppShell(
       repository: widget.repository,
-      printerService: widget.printerService,
       license: widget.license,
       sync: widget.sync,
       backup: widget.backup,

@@ -6,6 +6,7 @@ import '../../core/utils/format.dart';
 import '../../models/haccp_models.dart';
 import '../../repositories/haccp_repository.dart';
 import '../../services/pdf_service.dart';
+import '../../services/printing/print_label_flow.dart';
 import '../../widgets/attachment_section.dart';
 import '../../widgets/common_widgets.dart';
 import '../lots_screen.dart' show PdfPreviewScreen;
@@ -117,6 +118,27 @@ Future<void> showEquipmentHistory(
                     const SizedBox(height: 8),
                     Row(
                       children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final pdf = PdfService(repository: repository);
+                              final bytes =
+                                  await pdf.buildEquipmentQrLabel(equipment);
+                              if (!sheetContext.mounted) return;
+                              await showPrintLabelDialog(
+                                sheetContext,
+                                repository: repository,
+                                pdfBytes: bytes,
+                                title: 'Stampa etichetta QR',
+                                pdfFileName:
+                                    'HACCP_QR_${sanitizeFileName(equipment.name)}.pdf',
+                              );
+                            },
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('Stampa QR'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
