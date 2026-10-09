@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/common_widgets.dart';
+import '../widgets/exit_confirm_scope.dart';
 
 /// Scelta al primo avvio (Prompt 12, §A): mostrata SOLO con onboarding
 /// non completato, database vuoto e scelta non ancora fatta
@@ -14,6 +15,7 @@ class FirstRunChoiceScreen extends StatelessWidget {
     super.key,
     required this.onNewActivity,
     required this.onRestore,
+    this.onConfirmExit,
   });
 
   /// "Nuova attività" o "Più tardi": prosegue con la configurazione.
@@ -22,62 +24,70 @@ class FirstRunChoiceScreen extends StatelessWidget {
   /// "Ho già usato HACCPass: ripristina i miei dati".
   final Future<void> Function() onRestore;
 
+  /// Handler di uscita iniettabile per i test (Prompt 14, §3).
+  final Future<void> Function()? onConfirmExit;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: screenPadding(context, top: 40),
-          children: [
-            Icon(
-              Icons.restaurant_menu_outlined,
-              size: 56,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Benvenuto in HACCPass',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'È la prima volta su questo telefono?',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+    // Radice senza schermate sotto: Indietro chiede conferma
+    // (Prompt 14, §3). Il wizard di ripristino aperto sopra si chiude
+    // normalmente: questo PopScope non scatta finché c'è una route sopra.
+    return ExitConfirmScope(
+      onConfirmExit: onConfirmExit,
+      child: Scaffold(
+        body: SafeArea(
+          child: ListView(
+            padding: screenPadding(context, top: 40),
+            children: [
+              Icon(
+                Icons.restaurant_menu_outlined,
+                size: 56,
+                color: theme.colorScheme.primary,
               ),
-            ),
-            const SizedBox(height: 28),
-            _ChoiceCard(
-              icon: Icons.add_business_outlined,
-              title: 'Nuova attività',
-              subtitle:
-                  'Parto da zero: configurazione guidata di azienda, '
-                  'attrezzature e piano di pulizia.',
-              onPressed: onNewActivity,
-            ),
-            const SizedBox(height: 14),
-            _ChoiceCard(
-              icon: Icons.cloud_download_outlined,
-              title: 'Ho già usato HACCPass',
-              subtitle:
-                  'Ripristina i miei dati da Google Drive o da un file di '
-                  'backup: ritrovo registri e foto anche su un telefono '
-                  'nuovo.',
-              emphasized: true,
-              onPressed: onRestore,
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: TextButton(
+              const SizedBox(height: 12),
+              Text(
+                'Benvenuto in HACCPass',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'È la prima volta su questo telefono?',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+              _ChoiceCard(
+                icon: Icons.add_business_outlined,
+                title: 'Nuova attività',
+                subtitle: 'Parto da zero: configurazione guidata di azienda, '
+                    'attrezzature e piano di pulizia.',
                 onPressed: onNewActivity,
-                child: const Text('Più tardi'),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              _ChoiceCard(
+                icon: Icons.cloud_download_outlined,
+                title: 'Ho già usato HACCPass',
+                subtitle:
+                    'Ripristina i miei dati da Google Drive o da un file di '
+                    'backup: ritrovo registri e foto anche su un telefono '
+                    'nuovo.',
+                emphasized: true,
+                onPressed: onRestore,
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(
+                  onPressed: onNewActivity,
+                  child: const Text('Più tardi'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

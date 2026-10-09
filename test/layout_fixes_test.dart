@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,11 +8,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:haccpass/core/constants/haccp_rules.dart';
 import 'package:haccpass/core/database/app_database.dart';
+import 'package:haccpass/core/printing/label_printer.dart';
 import 'package:haccpass/core/theme/app_theme.dart';
 import 'package:haccpass/repositories/haccp_repository.dart';
 import 'package:haccpass/screens/checks_hub_screen.dart';
 import 'package:haccpass/screens/dashboard_screen.dart';
 import 'package:haccpass/screens/guide_screen.dart';
+import 'package:haccpass/screens/printer_settings_screen.dart';
 import 'package:haccpass/services/license_service.dart';
 import 'package:haccpass/widgets/common_widgets.dart';
 
@@ -116,12 +119,10 @@ void main() {
   group('Edge-to-edge: inset nelle schermate principali', () {
     testWidgets(
         'Dashboard a 360x640, scala 1.15, inset 24/48: padding corretto e '
-        'nessun overflow',
-        (tester) async {
+        'nessun overflow', (tester) async {
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1.0;
-      tester.view.padding =
-          FakeViewPadding(top: 24, bottom: 48);
+      tester.view.padding = FakeViewPadding(top: 24, bottom: 48);
       tester.platformDispatcher.textScaleFactorTestValue = 1.15;
       addTearDown(tester.view.reset);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -194,10 +195,8 @@ void main() {
         'di navigazione', (tester) async {
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1.0;
-      tester.view.padding =
-          FakeViewPadding(top: 24, bottom: 48);
-      tester.view.viewPadding =
-          FakeViewPadding(top: 24, bottom: 48);
+      tester.view.padding = FakeViewPadding(top: 24, bottom: 48);
+      tester.view.viewPadding = FakeViewPadding(top: 24, bottom: 48);
       addTearDown(tester.view.reset);
 
       await tester.pumpWidget(
@@ -244,8 +243,7 @@ void main() {
       );
 
       // Il foglio non sale sopra la barra di stato (useSafeArea).
-      final sheetTop =
-          tester.getTopLeft(find.byType(BottomSheet).first).dy;
+      final sheetTop = tester.getTopLeft(find.byType(BottomSheet).first).dy;
       expect(sheetTop, greaterThanOrEqualTo(24));
 
       expect(tester.takeException(), isNull);
@@ -286,9 +284,323 @@ void main() {
       }
       // Area di tocco >= 48 dp per riga.
       for (final tile in find.byType(CheckboxListTile).evaluate()) {
-        expect(tile.renderObject!.paintBounds.height,
-            greaterThanOrEqualTo(48));
+        expect(tile.renderObject!.paintBounds.height, greaterThanOrEqualTo(48));
       }
     });
   });
+
+  group('Prompt 14: Stampante — barra di sistema e larghezze uniformi', () {
+    Future<void> pumpPrinter(
+      WidgetTester tester, {
+      required Size size,
+      double textScale = 1.0,
+      EdgeInsets viewPadding = EdgeInsets.zero,
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(padding: viewPadding),
+              child: PrinterSettingsScreen(
+                repository: repository,
+                // Motori finti con gli id/nomi dei reali.
+                engines: [
+                  _FakeEngine('brother', 'Brother QL'),
+                  _FakeEngine('niimbot', 'Niimbot'),
+                  _FakeEngine('generic', 'Stampante generica'),
+                  _FakeEngine('system', 'Stampa di sistema'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+    }
+
+    testWidgets(
+        'inset 48: "Anteprima" resta sopra la barra di navigazione (360×640)',
+        (tester) async {
+      await tester
+          .runAsync(() => repository.setSetting('printer_engine', 'brother'));
+      await pumpPrinter(
+        tester,
+        size: const Size(360, 640),
+        viewPadding: const EdgeInsets.only(bottom: 48),
+      );
+
+      // Scorri fino in fondo alla lista.
+      await tester.drag(
+        find.byType(Scrollable).first,
+        const Offset(0, -3000),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      final rect = tester.getRect(
+        find.widgetWithText(OutlinedButton, 'Anteprima'),
+      );
+      expect(
+        rect.bottom,
+        lessThanOrEqualTo(640 - 48),
+        reason: 'il bordo inferiore del pulsante non può finire sotto la '
+            'barra di navigazione (640 − 48 = 592)',
+      );
+    });
+
+    for (final (size, scale) in const [
+      (Size(360, 640), 1.0),
+      (Size(360, 640), 1.15),
+      (Size(412, 915), 1.0),
+      (Size(412, 915), 1.15),
+    ]) {
+      testWidgets(
+          'larghezze uniformi ${size.width}dp scala $scale '
+          '(primaria piena, coppia uguale)', (tester) async {
+        await tester
+            .runAsync(() => repository.setSetting('printer_engine', 'brother'));
+        await tester.runAsync(() =>
+            repository.setSetting('printer_device_id', 'wifi:1.2.3.4|QL'));
+        await pumpPrinter(tester, size: size, textScale: scale);
+
+        // "Cerca stampanti" è in alto ma la lista è lazy: garantirne la
+        // costruzione PRIMA di misurare, senza spostarlo se è in vista.
+        await tester.scrollUntilVisible(
+          find.widgetWithText(FilledButton, 'Cerca stampanti'),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump();
+        final cerca = tester.getRect(
+          find.widgetWithText(FilledButton, 'Cerca stampanti'),
+        );
+
+        // I pulsanti d'azione sono in fondo alla lista: scorrere prima di
+        // misurare (ListView lazy).
+        await tester.drag(
+          find.byType(Scrollable).first,
+          const Offset(0, -3000),
+        );
+        await tester.pump();
+
+        expect(tester.takeException(), isNull,
+            reason: 'nessun overflow con larghezza ${size.width} e scala '
+                '$scale');
+
+        final contentWidth = size.width - 32; // margini 16 + 16
+        final prova = tester.getRect(find.widgetWithText(
+          FilledButton,
+          'Stampa etichetta di prova',
+        ));
+        expect(prova.width, closeTo(contentWidth, 0.5),
+            reason: 'azione primaria a larghezza piena');
+        expect(cerca.width + 8 + 52, closeTo(contentWidth, 0.5),
+            reason: 'riga Cerca: pulsante + icona stato 52×52');
+        expect(cerca.left, closeTo(prova.left, 0.5),
+            reason: 'stesso margine sinistro');
+
+        final anteprima = tester.getRect(
+          find.widgetWithText(OutlinedButton, 'Anteprima'),
+        );
+        final scollega = tester.getRect(
+          find.widgetWithText(OutlinedButton, 'Scollega'),
+        );
+        expect(anteprima.width, closeTo(scollega.width, 0.5),
+            reason: 'secondarie in coppia a larghezza uguale');
+        expect(anteprima.width, closeTo((contentWidth - 8) / 2, 0.5));
+      });
+    }
+  });
+
+  group('Prompt 16, §1–§2: ActionButtonRow e scheda lotto', () {
+    List<ActionButtonData> lotActions(List<int> taps) => [
+          ActionButtonData(
+            icon: Icons.print_outlined,
+            label: 'Stampa',
+            onPressed: () => taps[0]++,
+          ),
+          ActionButtonData(
+            icon: Icons.qr_code_2,
+            label: 'Etichetta',
+            onPressed: () => taps[1]++,
+          ),
+          ActionButtonData(
+            icon: Icons.account_tree_outlined,
+            label: 'Rintraccio',
+            onPressed: () => taps[2]++,
+          ),
+          ActionButtonData(
+            icon: Icons.attach_file,
+            label: 'Allegati',
+            onPressed: () => taps[3]++,
+          ),
+        ];
+
+    Future<void> pumpRow(
+      WidgetTester tester, {
+      required Size size,
+      double textScale = 1.0,
+      List<ActionButtonData> actions = const [],
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.view.reset);
+      addTearDown(
+          tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ActionButtonRow(actions: actions),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    for (final (size, scale) in const [
+      (Size(320, 640), 1.0),
+      (Size(320, 640), 1.15),
+      (Size(360, 640), 1.0),
+      (Size(360, 640), 1.15),
+      (Size(412, 915), 1.0),
+      (Size(412, 915), 1.15),
+    ]) {
+      testWidgets(
+          'quattro azioni uguali, 56 dp, testo su una riga '
+          '(${size.width}dp, scala $scale)', (tester) async {
+        final taps = [0, 0, 0, 0];
+        await pumpRow(tester,
+            size: size, textScale: scale, actions: lotActions(taps));
+
+        expect(tester.takeException(), isNull,
+            reason: 'nessun overflow a ${size.width} scala $scale');
+
+        final rects = [
+          for (final label in const ['Stampa', 'Etichetta', 'Rintraccio', 'Allegati'])
+            tester.getRect(find.widgetWithText(OutlinedButton, label)),
+        ];
+        // Stessa altezza 56 e larghezze uguali, sempre.
+        for (final rect in rects.skip(1)) {
+          expect(rect.height, closeTo(56, 0.5));
+          expect(rect.width, closeTo(rects.first.width, 0.5));
+        }
+        // Etichette su UNA riga: mai spezzate lettera per lettera.
+        for (final label in const ['Stampa', 'Etichetta', 'Rintraccio', 'Allegati']) {
+          final textRect = tester.getRect(find.text(label));
+          expect(textRect.height, lessThan(24),
+              reason: '$label deve stare su una riga');
+        }
+
+        if (size.width <= 320) {
+          // 66 dp per pulsante < 72: due righe uguali (griglia).
+          expect(rects[0].top, closeTo(rects[1].top, 0.5));
+          expect(rects[2].top, greaterThan(rects[0].bottom));
+        } else {
+          // Una riga sola: stesso dy per tutti.
+          for (final rect in rects.skip(1)) {
+            expect(rect.top, closeTo(rects.first.top, 0.5));
+          }
+          expect(
+            rects.last.right,
+            lessThanOrEqualTo(size.width - 16),
+          );
+        }
+      });
+    }
+
+    testWidgets('con 200 dp di larghezza passa alla griglia 2 colonne',
+        (tester) async {
+      tester.view.physicalSize = const Size(240, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final taps = [0, 0, 0, 0];
+      await pumpRow(tester,
+          size: const Size(240, 640), actions: lotActions(taps));
+
+      expect(tester.takeException(), isNull);
+      final rects = [
+        for (final label in const ['Stampa', 'Etichetta', 'Rintraccio', 'Allegati'])
+          tester.getRect(find.widgetWithText(OutlinedButton, label)),
+      ];
+      // Due colonne: larghezza ≈ metà, due righe diverse (dy diversi).
+      final half = (240 - 32 - 8) / 2;
+      for (final rect in rects) {
+        expect(rect.width, closeTo(half, 1));
+      }
+      expect(rects[0].top, closeTo(rects[1].top, 0.5),
+          reason: 'prima coppia sulla stessa riga');
+      expect(rects[2].top, greaterThan(rects[0].bottom),
+          reason: 'seconda coppia sotto');
+    });
+
+    testWidgets('il tocco chiama il callback giusto (3 e 4 azioni)',
+        (tester) async {
+      final taps4 = [0, 0, 0, 0];
+      await pumpRow(tester,
+          size: const Size(412, 800), actions: lotActions(taps4));
+      for (final label in const ['Stampa', 'Etichetta', 'Rintraccio', 'Allegati']) {
+        await tester.tap(find.text(label));
+        await tester.pump();
+      }
+      expect(taps4, [1, 1, 1, 1]);
+
+      final taps3 = [0, 0, 0, 0];
+      await pumpRow(tester,
+          size: const Size(412, 800), actions: lotActions(taps3).take(3).toList());
+      for (final label in const ['Stampa', 'Etichetta', 'Rintraccio']) {
+        await tester.tap(find.text(label));
+        await tester.pump();
+      }
+      expect(taps3, [1, 1, 1, 0]);
+    });
+  });
+}
+
+/// Motore finto per i test di layout della schermata Stampante.
+class _FakeEngine implements LabelPrinter {
+  const _FakeEngine(this.id, this.displayName);
+
+  @override
+  final String id;
+
+  @override
+  final String displayName;
+
+  @override
+  Future<List<PrinterDevice>> discover() async => const [];
+
+  @override
+  Future<void> connect(PrinterDevice device) async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  Future<PrintResult> printLabels(
+    List<Uint8List> pages,
+    LabelSpec spec, {
+    int copies = 1,
+  }) async =>
+      const PrintResult(PrintOutcome.ok);
+
+  @override
+  Future<PrinterStatus> status() async => const PrinterStatus(connected: false);
 }

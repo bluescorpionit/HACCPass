@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
@@ -22,10 +22,19 @@ class LotsScreen extends StatelessWidget {
     super.key,
     required this.repository,
     required this.license,
+    this.productEditor,
   });
 
   final HaccpRepository repository;
   final LicenseService license;
+
+  /// Editor prodotto iniettabile per i test (default: l'editor condiviso
+  /// della schermata Prodotti, Prompt 16, Â§8).
+  final Future<Product?> Function(
+    BuildContext context,
+    HaccpRepository repository, {
+    Product? existing,
+  })? productEditor;
 
   AttachmentService get attachments =>
       AttachmentService(repository: repository);
@@ -66,8 +75,7 @@ class LotsScreen extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => TraceabilityScreen(
-                        repository: repository),
+                    builder: (_) => TraceabilityScreen(repository: repository),
                   ),
                 ),
                 icon: const Icon(Icons.search),
@@ -117,35 +125,79 @@ class LotsScreen extends StatelessWidget {
 
   Future<void> _newLot(BuildContext context) async {
     final products = await repository.getProducts();
+    products
+        .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final usableReceipts = await repository.getUsableReceipts();
     final operator = await repository.defaultOperator();
     if (!context.mounted) return;
 
     final codeController = TextEditingController();
     final qtyController = TextEditingController();
-    final storageController = TextEditingController(text: 'Conservare a 0/+4 \u00B0C');
+    final storageController =
+        TextEditingController(text: 'Conservare a 0/+4 \u00B0C');
     final notesController = TextEditingController();
     final freeIngredientController = TextEditingController();
+    final freeLotNameController = TextEditingController();
     final pending = <PendingAttachment>[];
 
-    Product? product = products.isEmpty ? null : products.first;
+    // Prompt 16, Ã‚Â§8: nessuna preselezione silenziosa: si parte vuoti
+    // oppure dall'ultimo prodotto usato (se esiste ancora).
+    final lastUsedId =
+        int.tryParse(await repository.getSetting('last_lot_product_id'));
+    Product? product;
+    for (final p in products) {
+      if (p.id == lastUsedId) {
+        product = p;
+        break;
+      }
+    }
+    var isFreeLot = false;
     var producedAt = DateTime.now();
     DateTime? expiresAt;
     var quantityUnit = 'pz';
     final selectedReceiptIds = <int>{};
 
-    if (product != null) {
-      codeController.text = repository.generateLotCode(product.name);
-      storageController.text =
-          product.storage.isEmpty ? storageController.text : product.storage;
-      expiresAt = product.shelfLifeDays == null
-          ? DateTime.now().add(const Duration(days: 2))
-          : DateTime.now().add(Duration(days: product.shelfLifeDays!));
-    } else {
-      codeController.text = repository.generateLotCode('LOTTO');
-      expiresAt = DateTime.now().add(const Duration(days: 2));
+    // Flag "dirty": i campi modificati a mano NON vengono toccati dal
+    // cambio prodotto (Prompt 16, Ã‚Â§8).
+    var codeDirty = false;
+    var storageDirty = false;
+    var expiryDirty = false;
+
+    const defaultStorage = 'Conservare a 0/+4 \u00B0C';
+
+    void prefillFromProduct(Product p, {bool force = false}) {
+      if (!codeDirty || force) {
+        codeController.text = repository.generateLotCode(p.name);
+      }
+      if (!storageDirty || force) {
+        storageController.text = p.storage.isEmpty ? defaultStorage : p.storage;
+      }
+      if (!expiryDirty || force) {
+        expiresAt = p.shelfLifeDays == null
+            ? DateTime.now().add(const Duration(days: 2))
+            : DateTime.now().add(Duration(days: p.shelfLifeDays!));
+      }
     }
 
+    void resetToFreeDefaults() {
+      if (!codeDirty) codeController.text = repository.generateLotCode('LOTTO');
+      if (!storageDirty) storageController.text = defaultStorage;
+      if (!expiryDirty) {
+        expiresAt = DateTime.now().add(const Duration(days: 2));
+      }
+    }
+
+    if (product != null) {
+      prefillFromProduct(product, force: true);
+    } else {
+      resetToFreeDefaults();
+    }
+
+    bool canCreate() =>
+        product != null ||
+        (isFreeLot && freeLotNameController.text.trim().isNotEmpty);
+
+    if (!context.mounted) return;
     final saved = await showFormSheet<bool>(
       context: context,
       title: 'Nuovo lotto di produzione',
@@ -153,38 +205,205 @@ class LotsScreen extends StatelessWidget {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final selectedName = product?.name ??
+                (isFreeLot
+                    ? 'Lotto libero (senza scheda)'
+                    : 'Seleziona il prodotto');
+            final summary = product == null
+                ? null
+                : [
+                    if (product!.shelfLifeDays != null)
+                      'Durata ${product!.shelfLifeDays} giorni',
+                    if (product!.allergenCodes.isNotEmpty)
+                      'Allergeni: ${product!.allergenCodes.map((c) => allergenByCode(c).label).join(', ')}',
+                  ].join(' \u2022 ');
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 LabeledField(
                   label: 'Prodotto (scheda)',
-                  child: products.isEmpty
-                      ? const Text(
-                          'Nessuna scheda prodotto: il lotto sar\u00E0 libero. '
-                          'Crea le schede per durata e allergeni.')
-                      : ChoiceRow<Product?>(
-                          options: [
-                            for (final p in products.take(8)) (p, p.name),
-                          ],
-                          selected: product,
-                          onSelected: (v) => setSheetState(() {
-                            product = v;
-                            codeController.text =
-                                repository.generateLotCode(v!.name);
-                            storageController.text = v.storage.isEmpty
-                                ? 'Conservare a 0/+4 \u00B0C'
-                                : v.storage;
-                            expiresAt = v.shelfLifeDays == null
-                                ? DateTime.now()
-                                    .add(const Duration(days: 2))
-                                : DateTime.now()
-                                    .add(Duration(days: v.shelfLifeDays!));
-                          }),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final narrow = constraints.maxWidth < 340;
+                      final picker = SearchablePickerField<Object>(
+                        key: const Key('lot_product_picker'),
+                        label: products.isEmpty
+                            ? 'Nessuna scheda prodotto'
+                            : 'Seleziona il prodotto',
+                        enabled: products.isNotEmpty,
+                        selectedLabel: selectedName,
+                        items: [
+                          for (final p in products)
+                            PickerItem<Object>(
+                              value: p,
+                              title: p.name,
+                              subtitle: [
+                                if (p.shelfLifeDays != null)
+                                  'durata ${p.shelfLifeDays} giorni',
+                                if (p.allergenCodes.isNotEmpty)
+                                  'allergeni: ${p.allergenCodes.map((c) => allergenByCode(c).label).join(', ')}',
+                              ].join(' \u2022 '),
+                            ),
+                          const PickerItem<Object>(
+                            value: _freeLotChoice,
+                            title: 'Lotto libero (senza scheda)',
+                          ),
+                        ],
+                        onPicked: (picked) => setSheetState(() {
+                          if (picked == null) return;
+                          if (picked is Product) {
+                            product = picked;
+                            isFreeLot = false;
+                            prefillFromProduct(picked);
+                          } else {
+                            product = null;
+                            isFreeLot = true;
+                            resetToFreeDefaults();
+                          }
+                        }),
+                      );
+                      final newButton = SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: Tooltip(
+                          message: 'Nuovo prodotto',
+                          child: FilledButton.tonal(
+                            onPressed: () async {
+                              final created =
+                                  await (productEditor ?? showProductEditor)(
+                                context,
+                                repository,
+                              );
+                              if (created == null || !context.mounted) return;
+                              setSheetState(() {
+                                product = created;
+                                isFreeLot = false;
+                                // Il nuovo prodotto ÃƒÂ¨ selezionato e il
+                                // lotto si precompila (Prompt 16, Ã‚Â§8).
+                                prefillFromProduct(created, force: true);
+                              });
+                            },
+                            child: const Icon(Icons.add),
+                          ),
                         ),
+                      );
+                      if (narrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            picker,
+                            const SizedBox(height: 8),
+                            newButton,
+                          ],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: picker),
+                          const SizedBox(width: 8),
+                          newButton,
+                        ],
+                      );
+                    },
+                  ),
                 ),
+                if (products.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SizedBox(
+                      height: 52,
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          final created =
+                              await (productEditor ?? showProductEditor)(
+                            context,
+                            repository,
+                          );
+                          if (created == null || !context.mounted) return;
+                          setSheetState(() {
+                            products.add(created);
+                            product = created;
+                            prefillFromProduct(created, force: true);
+                          });
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Crea il primo prodotto'),
+                      ),
+                    ),
+                  )
+                else ...[
+                  if (product == null && !isFreeLot)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Scegli un prodotto o crea una nuova scheda.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                  if (summary != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              summary == ''
+                                  ? 'Nessun allergene indicato'
+                                  : summary,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              final edited =
+                                  await (productEditor ?? showProductEditor)(
+                                context,
+                                repository,
+                                existing: product,
+                              );
+                              if (edited == null || !context.mounted) return;
+                              setSheetState(() => product = edited);
+                            },
+                            child: const Text('Modifica scheda'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                if (isFreeLot)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: TextField(
+                      key: const Key('lot_free_name_field'),
+                      controller: freeLotNameController,
+                      onChanged: (_) => setSheetState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Nome del lotto (obbligatorio)',
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
                 LabeledField(
                   label: 'Codice lotto (editabile)',
-                  child: TextField(controller: codeController),
+                  child: TextField(
+                    key: const Key('lot_code_field'),
+                    controller: codeController,
+                    onChanged: (_) => codeDirty = true,
+                  ),
                 ),
                 DateField(
                   label: 'Data di produzione',
@@ -196,7 +415,10 @@ class LotsScreen extends StatelessWidget {
                 DateField(
                   label: 'Utilizzare entro (precompilata dalla durata)',
                   value: expiresAt,
-                  onChanged: (v) => setSheetState(() => expiresAt = v),
+                  onChanged: (v) {
+                    expiryDirty = true;
+                    setSheetState(() => expiresAt = v);
+                  },
                 ),
                 TextField(
                   controller: qtyController,
@@ -209,15 +431,19 @@ class LotsScreen extends StatelessWidget {
                 LabeledField(
                   label: 'Unit\u00E0',
                   child: ChoiceRow<String>(
-                    options: const [('pz', 'pz'), ('kg', 'kg'), ('porzioni', 'porzioni')],
+                    options: const [
+                      ('pz', 'pz'),
+                      ('kg', 'kg'),
+                      ('porzioni', 'porzioni')
+                    ],
                     selected: quantityUnit,
                     onSelected: (v) => setSheetState(() => quantityUnit = v),
                   ),
                 ),
                 TextField(
                   controller: storageController,
-                  decoration:
-                      const InputDecoration(labelText: 'Conservazione'),
+                  onChanged: (_) => storageDirty = true,
+                  decoration: const InputDecoration(labelText: 'Conservazione'),
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -292,7 +518,18 @@ class LotsScreen extends StatelessWidget {
           },
         );
       },
-      onSave: () => codeController.text.trim().isNotEmpty,
+      onSave: () {
+        if (!canCreate()) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Scegli un prodotto o compila il nome del lotto libero.'),
+            ),
+          );
+          return false;
+        }
+        return codeController.text.trim().isNotEmpty;
+      },
     );
 
     if (saved != true) {
@@ -324,12 +561,13 @@ class LotsScreen extends StatelessWidget {
       ProductionLot(
         id: 0,
         code: codeController.text.trim().toUpperCase(),
-        productName: product?.name ?? 'Lotto libero',
+        // Lotto libero: il nome Ã¨ obbligatorio (validato in onSave).
+        productName: product?.name ?? freeLotNameController.text.trim(),
         productId: product?.id,
         producedAt: producedAt,
         expiresAt: expiresAt,
-        quantity: double.tryParse(
-            qtyController.text.trim().replaceAll(',', '.')),
+        quantity:
+            double.tryParse(qtyController.text.trim().replaceAll(',', '.')),
         unit: quantityUnit,
         storageInfo: storageController.text.trim(),
         operatorName: operator,
@@ -337,6 +575,12 @@ class LotsScreen extends StatelessWidget {
         allergenCodes: product?.allergenCodes ?? const [],
       ),
       ingredients: ingredients,
+    );
+
+    // Prompt 16, Â§8: il prossimo lotto riparte da questo prodotto.
+    await repository.setSetting(
+      'last_lot_product_id',
+      product?.id.toString() ?? '',
     );
 
     // Salvataggio riuscito: gli allegati pendenti diventano definitivi.
@@ -417,12 +661,17 @@ class _LotCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     lot.productName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   lot.code,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w700,
@@ -461,33 +710,32 @@ class _LotCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _printLabel(context),
-                    icon: const Icon(Icons.print_outlined),
-                    label: const Text('Stampa'),
-                  ),
+            // Prompt 16, Ã‚Â§1Ã¢â‚¬â€œÃ‚Â§2: quattro azioni UGUALI in orizzontale
+            // (icona sopra, testo sotto su una riga, 56 dp): niente piÃƒÂ¹
+            // testo verticale a 90 dp per pulsante.
+            ActionButtonRow(
+              actions: [
+                ActionButtonData(
+                  icon: Icons.print_outlined,
+                  label: 'Stampa',
+                  tooltip: 'Stampa l\u2019etichetta del lotto',
+                  onPressed: () => _printLabel(context),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showLabel(context),
-                    icon: const Icon(Icons.qr_code_2),
-                    label: const Text('Etichetta'),
-                  ),
+                ActionButtonData(
+                  icon: Icons.qr_code_2,
+                  label: 'Etichetta',
+                  tooltip: 'Anteprima e PDF dell\u2019etichetta',
+                  onPressed: () => _showLabel(context),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showTraceability(context),
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Rintraccio'),
-                  ),
+                ActionButtonData(
+                  icon: Icons.account_tree_outlined,
+                  label: 'Rintraccio',
+                  tooltip: 'Scheda di rintracciabilit\u00E0 del lotto',
+                  onPressed: () => _showTraceability(context),
                 ),
-                const SizedBox(width: 10),
-                IconButton.outlined(
+                ActionButtonData(
+                  icon: Icons.attach_file,
+                  label: 'Allegati',
                   tooltip: 'Foto e allegati',
                   onPressed: () => showAttachmentsSheet(
                     context,
@@ -496,7 +744,6 @@ class _LotCard extends StatelessWidget {
                     entityId: lot.id,
                     title: lot.productName,
                   ),
-                  icon: const Icon(Icons.attach_file),
                 ),
               ],
             ),
@@ -507,7 +754,7 @@ class _LotCard extends StatelessWidget {
   }
 
   /// Stampa l'etichetta del lotto con la stampante configurata (Prompt
-  /// 11, §4): nessuna stampante → si configura o si condivide il PDF.
+  /// 11, Ã‚Â§4): nessuna stampante Ã¢â€ â€™ si configura o si condivide il PDF.
   Future<void> _printLabel(BuildContext context) async {
     if (!license.ensureLicensed(context)) return;
 
@@ -600,7 +847,8 @@ class PdfPreviewScreen extends StatelessWidget {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () async {
-                        await Printing.sharePdf(bytes: bytes, filename: fileName);
+                        await Printing.sharePdf(
+                            bytes: bytes, filename: fileName);
                       },
                       icon: const Icon(Icons.share),
                       label: const Text('Condividi'),
@@ -628,3 +876,10 @@ class PdfPreviewScreen extends StatelessWidget {
     );
   }
 }
+
+/// Sentinella della voce "Lotto libero (senza scheda)" nel selettore.
+class _FreeLotChoice {
+  const _FreeLotChoice();
+}
+
+const _freeLotChoice = _FreeLotChoice();

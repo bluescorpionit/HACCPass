@@ -6,12 +6,96 @@ import 'package:printing/printing.dart';
 import '../../core/printing/label_printer.dart';
 import '../../repositories/haccp_repository.dart';
 import '../../screens/printer_settings_screen.dart';
+import 'generic_label_printer.dart';
 import 'print_coordinator.dart';
 
-/// Flusso di stampa etichetta per l'utente (Prompt 11, §4):
-/// - nessuna stampante configurata → propone di configurarla oppure di
+/// Esito della scelta di adattamento alla carta (Prompt 17, Â§3).
+enum GenericFitChoice { shrink, smallerFormat, cancelled }
+
+/// Dialog di adattamento quando l'etichetta Ã¨ piÃ¹ larga della carta
+/// (Prompt 17, Â§3): MAI riduzioni nascoste. Opzioni: ridurre per
+/// adattare (consigliato), scegliere un formato piÃ¹ piccolo, annullare;
+/// la scelta puÃ² essere ricordata (`printer_generic_fit_mode`).
+Future<GenericFitChoice> showFitChoiceDialog(
+  BuildContext context, {
+  required GenericLabelPrinter engine,
+  required HaccpRepository repository,
+  required LabelSpec spec,
+}) async {
+  final fit = engine.checkFit(spec);
+  var remember = false;
+  var choice = GenericFitChoice.cancelled;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('L\u2019etichetta \u00E8 pi\u00F9 larga della carta'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'L\u2019etichetta \u00E8 larga ${fit.labelMm} mm ma la stampante '
+              'ne stampa al massimo ${fit.printableMm.toStringAsFixed(0)} mm '
+              '(carta dichiarata da ${engine.config.paperWidthMm} mm).',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Con la riduzione testi e QR diventano piÃ¹ piccoli: verifica '
+              'il QR con il telefono dopo la stampa.',
+              style: Theme.of(dialogContext).textTheme.bodySmall,
+            ),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: remember,
+              onChanged: (v) => setDialogState(() => remember = v ?? false),
+              title: const Text('Ricorda questa scelta'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annulla'),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                choice = GenericFitChoice.smallerFormat;
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Formato pi\u00F9 piccolo'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () {
+                choice = GenericFitChoice.shrink;
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Riduci per adattare'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (remember && choice != GenericFitChoice.cancelled) {
+    final mode = choice == GenericFitChoice.shrink ? 'shrink' : 'reject';
+    engine.config = engine.config.copyWith(fitMode: mode);
+    await repository.setSetting('printer_generic_fit_mode', mode);
+  }
+  return choice;
+}
+
+/// Flusso di stampa etichetta per l'utente (Prompt 11, Â§4):
+/// - nessuna stampante configurata â†’ propone di configurarla oppure di
 ///   condividere l'etichetta come PDF (l'app resta pienamente usabile);
-/// - stampante configurata → scelta copie, stampa a coda con
+/// - stampante configurata â†’ scelta copie, stampa a coda con
 ///   avanzamento e annulla, messaggi d'errore in italiano.
 Future<void> showPrintLabelDialog(
   BuildContext context, {
@@ -66,6 +150,58 @@ Future<void> showPrintLabelDialog(
     return;
   }
 
+  // Prompt 17, §3: l'etichetta più larga della carta non si taglia in
+  // silenzio: scelta esplicita (riduci / formato più piccolo / annulla)
+  // prima di aprire il dialogo delle copie.
+  final engine = coordinator.engine;
+  if (engine is GenericLabelPrinter &&
+      engine.config.language == GenericLanguage.escpos) {
+    final spec = coordinator.settings.spec;
+    final fit = engine.checkFit(spec);
+    if (!fit.fits) {
+      var proceed = engine.config.fitMode == 'shrink';
+      if (!proceed && engine.config.fitMode == 'ask') {
+        // ignore: use_build_context_synchronously
+        final choice = await showFitChoiceDialog(
+          context,
+          engine: engine,
+          repository: repository,
+          spec: spec,
+        );
+        if (choice == GenericFitChoice.shrink) {
+          engine.config = engine.config.copyWith(fitMode: 'shrink');
+          proceed = true;
+        } else if (choice == GenericFitChoice.smallerFormat) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Cambia formato in 40\u00D730 da Impostazioni \u2192 '
+                  'Stampante e riprova.',
+                ),
+              ),
+            );
+          }
+          return;
+        } else {
+          return;
+        }
+      }
+      if (!proceed) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(engine.checkFit(spec).fits
+                    ? ''
+                    : 'Etichetta più larga della carta: riduci, cambia formato '
+                        'o carta più larga (Impostazioni \u2192 Stampante).')),
+          );
+        }
+        return;
+      }
+    }
+  }
+
   var copies = 1;
   var printing = false;
   var progressDone = 0;
@@ -73,6 +209,7 @@ Future<void> showPrintLabelDialog(
   var resultMessage = '';
   final cancel = PrintCancel();
 
+  if (!context.mounted) return;
   await showDialog<void>(
     context: context,
     barrierDismissible: !printing,
@@ -108,9 +245,7 @@ Future<void> showPrintLabelDialog(
             if (printing) ...[
               const SizedBox(height: 16),
               LinearProgressIndicator(
-                value: progressTotal == 0
-                    ? null
-                    : progressDone / progressTotal,
+                value: progressTotal == 0 ? null : progressDone / progressTotal,
               ),
               const SizedBox(height: 6),
               Text('Etichetta $progressDone di $progressTotal\u2026'),

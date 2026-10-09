@@ -66,8 +66,8 @@ class ProductsScreen extends StatelessWidget {
                                 context: context,
                                 builder: (dialogContext) => AlertDialog(
                                   title: const Text('Eliminare il prodotto?'),
-                                  content:
-                                      Text('"${product.name}" verr\u00E0 rimosso.'),
+                                  content: Text(
+                                      '"${product.name}" verr\u00E0 rimosso.'),
                                   actions: [
                                     TextButton(
                                       onPressed: () =>
@@ -114,109 +114,171 @@ class ProductsScreen extends StatelessWidget {
   }
 
   String _allergenShort(List<String> codes) {
-    final names =
-        codes.map((c) => allergenByCode(c).label).take(3).join(', ');
+    final names = codes.map((c) => allergenByCode(c).label).take(3).join(', ');
     return codes.length > 3 ? '$names \u2026' : names;
   }
 
   Future<void> _edit(BuildContext context, Product? existing) async {
-    final nameController = TextEditingController(text: existing?.name ?? '');
-    final categoryController =
-        TextEditingController(text: existing?.category ?? '');
-    final ingredientsController =
-        TextEditingController(text: existing?.ingredients ?? '');
-    final shelfLifeController = TextEditingController(
-      text: existing?.shelfLifeDays?.toString() ?? '',
-    );
-    final storageController =
-        TextEditingController(text: existing?.storage ?? 'Conservare a 0/+4 \u00B0C');
-    final selected = {...?existing?.allergenCodes};
-
-    final saved = await showFormSheet<bool>(
-      context: context,
-      title: existing == null ? 'Nuovo prodotto' : 'Modifica prodotto',
-      saveLabel: 'Salva',
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                LabeledField(
-                  label: 'Nome',
-                  child: TextField(controller: nameController),
-                ),
-                LabeledField(
-                  label: 'Categoria',
-                  child: TextField(controller: categoryController),
-                ),
-                LabeledField(
-                  label: 'Ingredienti',
-                  child: TextField(
-                    controller: ingredientsController,
-                    maxLines: 2,
-                  ),
-                ),
-                TextField(
-                  controller: shelfLifeController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Durata in giorni (per calcolare la scadenza)',
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: storageController,
-                  decoration:
-                      const InputDecoration(labelText: 'Conservazione'),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Allergeni (Reg. UE 1169/2011)',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final allergen in allergens)
-                      FilterChipX(
-                        label: '${allergen.number}. ${allergen.label}',
-                        selected: selected.contains(allergen.code),
-                        onSelected: (value) => setSheetState(() {
-                          value
-                              ? selected.add(allergen.code)
-                              : selected.remove(allergen.code);
-                        }),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-              ],
-            );
-          },
-        );
-      },
-      onSave: () => nameController.text.trim().isNotEmpty,
-    );
-
-    if (saved != true) return;
-
-    await repository.saveProduct(
-      Product(
-        id: existing?.id ?? 0,
-        name: nameController.text.trim(),
-        category: categoryController.text.trim(),
-        ingredients: ingredientsController.text.trim(),
-        shelfLifeDays: int.tryParse(shelfLifeController.text.trim()),
-        storage: storageController.text.trim(),
-        allergenCodes: selected.toList(),
-      ),
-      id: existing?.id,
-    );
+    await showProductEditor(context, repository, existing: existing);
   }
+}
+
+/// Editor prodotto condiviso (Prompt 16, Â§8): usato dalla schermata
+/// Prodotti E dal foglio "Nuovo lotto" (creazione al volo). Nessuna
+/// duplicazione di campi o regole di validazione. Ritorna il prodotto
+/// salvato (con l'id assegnato) oppure null se annullato; se il nome
+/// (confronto senza maiuscole/spazi) esiste già, chiede e restituisce
+/// quello esistente.
+Future<Product?> showProductEditor(
+  BuildContext context,
+  HaccpRepository repository, {
+  Product? existing,
+}) async {
+  final nameController = TextEditingController(text: existing?.name ?? '');
+  final categoryController =
+      TextEditingController(text: existing?.category ?? '');
+  final ingredientsController =
+      TextEditingController(text: existing?.ingredients ?? '');
+  final shelfLifeController = TextEditingController(
+    text: existing?.shelfLifeDays?.toString() ?? '',
+  );
+  final storageController = TextEditingController(
+      text: existing?.storage ?? 'Conservare a 0/+4 \u00B0C');
+  final selected = {...?existing?.allergenCodes};
+  final known = await repository.getProducts();
+  if (!context.mounted) return null;
+
+  Product? duplicateOf(String name) {
+    final normalized = name.trim().toLowerCase().replaceAll(' ', '');
+    for (final product in known) {
+      if (product.id == existing?.id) continue;
+      if (product.name.trim().toLowerCase().replaceAll(' ', '') == normalized) {
+        return product;
+      }
+    }
+    return null;
+  }
+
+  final saved = await showFormSheet<bool>(
+    context: context,
+    title: existing == null ? 'Nuovo prodotto' : 'Modifica prodotto',
+    saveLabel: 'Salva',
+    builder: (sheetContext) {
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LabeledField(
+                label: 'Nome',
+                child: TextField(controller: nameController),
+              ),
+              LabeledField(
+                label: 'Categoria',
+                child: TextField(controller: categoryController),
+              ),
+              LabeledField(
+                label: 'Ingredienti',
+                child: TextField(
+                  controller: ingredientsController,
+                  maxLines: 2,
+                ),
+              ),
+              TextField(
+                controller: shelfLifeController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Durata in giorni (per calcolare la scadenza)',
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: storageController,
+                decoration: const InputDecoration(labelText: 'Conservazione'),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Allergeni (Reg. UE 1169/2011)',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final allergen in allergens)
+                    FilterChipX(
+                      label: '${allergen.number}. ${allergen.label}',
+                      selected: selected.contains(allergen.code),
+                      onSelected: (value) => setSheetState(() {
+                        value
+                            ? selected.add(allergen.code)
+                            : selected.remove(allergen.code);
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+          );
+        },
+      );
+    },
+    onSave: () => nameController.text.trim().isNotEmpty,
+  );
+
+  if (saved != true) return null;
+
+  if (!context.mounted) return null;
+  final name = nameController.text.trim();
+  final duplicate = duplicateOf(name);
+  if (duplicate != null) {
+    // Nome giÃ  esistente: proporre di selezionare quello esistente.
+    final useExisting = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Prodotto già esistente'),
+        content: Text(
+          'È già presente "$name" ("${duplicate.name}"). '
+          'Usare quello esistente invece di crearne un duplicato?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Crea comunque'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Usa esistente'),
+          ),
+        ],
+      ),
+    );
+    if (useExisting == true) return duplicate;
+  }
+
+  final id = await repository.saveProduct(
+    Product(
+      id: existing?.id ?? 0,
+      name: name,
+      category: categoryController.text.trim(),
+      ingredients: ingredientsController.text.trim(),
+      shelfLifeDays: int.tryParse(shelfLifeController.text.trim()),
+      storage: storageController.text.trim(),
+      allergenCodes: selected.toList(),
+    ),
+    id: existing?.id,
+  );
+  return Product(
+    id: id,
+    name: name,
+    category: categoryController.text.trim(),
+    ingredients: ingredientsController.text.trim(),
+    shelfLifeDays: int.tryParse(shelfLifeController.text.trim()),
+    storage: storageController.text.trim(),
+    allergenCodes: selected.toList(),
+  );
 }

@@ -471,6 +471,9 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
         attachments: widget.attachments,
         reminders: widget.reminders,
         sync: widget.sync,
+        // Wizard radice (primo avvio): Indietro al passo 0 chiede
+        // conferma d'uscita (Prompt 14, §3).
+        confirmExit: true,
         onFinished: () {
           setState(() => _onboarding = false);
           _maybeDailyBackup();

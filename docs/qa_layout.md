@@ -18,6 +18,11 @@ ogni schermata, foglio e dialog deve gestire gli inset di sistema.
 | 6 | Wizard: "Salta questo passo" spezzato lettera per lettera; "Avanti" nell'ultimo passo | Barra a due livelli: riga 1 = Indietro + Avanti/Inizia; riga 2 = "Salta questo passo" su una riga propria a larghezza piena. Ultimo passo (Riepilogo): niente "Avanti", "Inizia" fisso in barra, avanzamento al 100%. Altezza < 600 dp (landscape): riga unica con "Salta" breve + tooltip | `onboarding_flow_test.dart` (flusso passi 0→1) |
 | 7 | Font eccessivi, a capo e overflow | Scala tipografica unica in `AppTheme` (display 28 … labelSmall 11, Poppins ridotta ~10%), titoli card `w600`, anello "Controlli di oggi" 88 dp, etichette pulsanti 15 sp, `MediaQuery.withClampedTextScaling` 0.9–1.15 | `layout_fixes_test.dart`: nessun overflow a 360×640 con scala 1.15 |
 | 8 | Landscape | Fogli limitati allo spazio utile, wizard compatto sotto 600 dp di altezza, contenuti scrollabili | Verifica manuale (checklist) |
+| 9 | Impostazioni → Stampante: la barra di navigazione copriva l'ultimo pulsante ("Anteprima") | `screenPadding(context, horizontal: 16)` al posto di `EdgeInsets.all(16)`: la lista scorre SOPRA la barra e l'ultimo elemento resta visibile e tappabile (3 tasti e gesti). Controllo trasversale con grep su tutte le schermate pushate (cloud backup, licenza, lotti, altro, NC, restore wizard, temperature, allegati, guida, ricevute, infestanti, dashboard): tutte usavano già `screenPadding` o SafeArea; l'unico difetto era la schermata Stampante | `layout_fixes_test.dart`: inset 48 simulato, 360×640, bordo inferiore di "Anteprima" sopra 640−48 |
+| 10 | Schermata Stampante: pulsanti con larghezze diverse (Wrap con prova/anteprima/scollega disallineati) | Regola di layout: **azioni primarie a larghezza piena (52 dp), azioni secondarie in coppia a larghezza uguale** ("Anteprima"/"Scollega" con `Expanded`×2; "Anteprima" sola se non c'è una stampante collegata). "Cerca stampanti" a riga piena con icona stato 52×52 fissa. Contenuto centrato con `ConstrainedBox(maxWidth: 640)` per i tablet; etichette con `FittedBox(scaleDown)` (mai tagliate); righe del formato in Card con lo stesso allineamento dei motori; `isExpanded` sul menu a tendina. `cloud_backup_screen` e `license_screen` verificate: non mostrano il difetto (nessun pulsante sparso in Wrap) | `layout_fixes_test.dart`: 360×640 e 412×915, scala 1.0 e 1.15: primaria a larghezza piena, coppia uguale, stesso margine, nessun overflow |
+| 11 | Il tasto/gesto Indietro chiudeva l'app dalla schermata principale senza chiedere | `ExitConfirmScope` (PopScope): dialog "Uscire da HACCPass?" con "Resta"/"Esci" SOLO sulle radici (shell, primo avvio, wizard al passo 0). Dalla shell, se la scheda non è "Oggi" Indietro prima torna a "Oggi"; schermate pushate e fogli si chiudono normalmente (il PopScope della radice non scatta sotto altre route). `android:enableOnBackInvokedCallback="true"` nel manifest per il predictive back (Android 13+/14+) | `exit_confirm_test.dart`: dialog da "Oggi" (Resta non esce, Esci esce), tab → "Oggi", route pushata e foglio modale chiusi senza dialog |
+| 12 | Scheda lotto: tre pulsanti + graffetta in una `Row` di `Expanded` → ~90 dp ciascuno, testo **una lettera per riga**, card inutilizzabile | Nuovo `ActionButtonRow` (`common_widgets.dart`): N pulsanti **uguali in orizzontale**, icona sopra e testo sotto su UNA riga (`FittedBox(scaleDown)`, mai parole spezzate), altezza 56, area tappa ≥ 48, `Semantics(button)` + tooltip; sotto i 72 dp per pulsante → griglia a due colonne uguali. Scheda lotto a 4 azioni (Stampa, Etichetta, Rintraccio, **Allegati** con testo). Stessa correzione dove c'erano 3+ azioni in riga: **Acqua e ghiaccio** (Analisi/Filtri/Ghiaccio) e **scheda non conformità** (Risolvi-o-Modulo/Cartello/Allegati). Titolo lotto maxLines 2 + codice una riga. REGOLA DI PROGETTO: **più di due azioni in riga → `ActionButtonRow`; mai `Expanded(OutlinedButton.icon)` con tre o più pulsanti** (il `minimumSize` del tema NON si tocca) | `layout_fixes_test.dart`: 320/360/412 × scala 1.0/1.15 (a 320 griglia 2×2 come da regola), 240 dp → griglia, tocchi ai callback |
+| 13 | Form stampante generica: overflow del menu Trasporto (voci disabilitate lunghe misurate TUTTE dal dropdown), campo "Dispositivo BLE" attaccato al menu, chip sparsi senza titolo, "Salva e collega" di larghezza diversa | Voci brevi + `selectedItemBuilder` con ellissi e `isExpanded`; campi uno sotto l'altro con spazio fisso 12 e helperText; gruppi con titolo e `SegmentedButton` a segmenti uguali (Linguaggio, Risoluzione, Larghezza carta); Avanzate a larghezza piena; "Salva e collega" piena 52; diagnostica a piena larghezza; guida "La stampante non stampa?"; sezioni Brother/Niimbot verificate coerenti | `printer_settings_screen_test.dart`: BLE e Wi-Fi a 320/360/412 × 1.0/1.15 senza overflow; inset 48: ultima sezione sopra la barra |
 
 ## Checklist di verifica manuale (telefono Android reale)
 
@@ -40,6 +45,26 @@ Combinazioni da provare: **tema chiaro/scuro** × **font di sistema 100% e
    dalla navigazione di sistema; in landscape riga unica compatta.
 6. **Generale**: nessun overflow (strisce gialle/nere), nessuna schermata
    nera, nessun errore in console (`flutter run --verbose` se serve).
+7. **Stampante / Licenza / Backup / Altro** (Prompt 14): con navigazione
+   a 3 TASTI e con GESTI, l'ultimo elemento di ogni schermata resta
+   interamente visibile e tappabile sopra la barra; nessun contenuto
+   coperto. Nella schermata Stampante: "Stampa etichetta di prova" a
+   larghezza piena, "Anteprima"/"Scollega" della stessa larghezza tra
+   loro, "Cerca stampanti" con l'icona di stato allineata a destra.
+8. **Indietro** (Prompt 14, solo Android): dalla scheda "Oggi" compare
+   "Uscire da HACCPass?" con "Resta"/"Esci"; da Controlli/Lotti/Report/
+   Altro si torna prima a "Oggi" senza dialog; le schermate aperte via
+   push e i fogli (Registra temperatura, etichetta lotto…) si chiudono
+   normalmente con Indietro; nel wizard al primo passo compare la
+   conferma, dai passi successivi torna al passo precedente. Provare
+   sia il tasto triangolo sia il gesto (predictive back).
+9. **Lotti e produzione** (Prompt 16): scheda lotto con 4 pulsanti
+   uguali in orizzontale (Stampa/Etichetta/Rintraccio/Allegati), testo
+   su una riga, a 360 e 412 dp con font 100% e 130% e con navigazione a
+   3 tasti e a gesti; a 320 dp i pulsanti passano su due righe uguali
+   (mai testo verticale). Stesso controllo su Acqua e ghiaccio e scheda
+   non conformità. Foglio "Nuovo lotto": menu prodotto, "Nuovo prodotto"
+   e fogli senza overflow a 320/412 e font 115%.
 
 Stato: fix applicati e coperti da test automatici
 (`flutter test test/layout_fixes_test.dart`); la checklist sopra va

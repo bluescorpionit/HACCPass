@@ -7,15 +7,15 @@ import '../repositories/haccp_repository.dart';
 // Struttura pagina
 // -----------------------------------------------------------------------------
 
-/// Padding per ListView/SingleChildScrollView radice in modalità edge-to-edge.
+/// Padding per ListView/SingleChildScrollView radice in modalitÃƒÂ  edge-to-edge.
 ///
 /// Somma gli inset di sistema alla spaziatura base: quando si passa `padding`
-/// esplicito a uno scrollView Flutter non aggiunge più `MediaQuery.padding`.
-/// Gli inset già consumati (AppBar, SafeArea, bottom bar della shell) valgono
-/// 0 nel `MediaQuery` locale, quindi la somma è sicura in ogni contesto.
+/// esplicito a uno scrollView Flutter non aggiunge piÃƒÂ¹ `MediaQuery.padding`.
+/// Gli inset giÃƒÂ  consumati (AppBar, SafeArea, bottom bar della shell) valgono
+/// 0 nel `MediaQuery` locale, quindi la somma ÃƒÂ¨ sicura in ogni contesto.
 ///
-/// [hasBottomBar] per le tab della shell (l'inferiore della barra è gestito
-/// dalla barra stessa); [hasFab] aggiunge 88 dp perché l'ultima card scorra
+/// [hasBottomBar] per le tab della shell (l'inferiore della barra ÃƒÂ¨ gestito
+/// dalla barra stessa); [hasFab] aggiunge 88 dp perchÃƒÂ© l'ultima card scorra
 /// sopra il pulsante flottante.
 EdgeInsets screenPadding(
   BuildContext context, {
@@ -28,7 +28,7 @@ EdgeInsets screenPadding(
   final insets = MediaQuery.paddingOf(context);
   return EdgeInsets.fromLTRB(
     horizontal + insets.left,
-    // Sotto una AppBar il MediaQuery locale ha già top = 0: sommare è
+    // Sotto una AppBar il MediaQuery locale ha giÃƒÂ  top = 0: sommare ÃƒÂ¨
     // sempre sicuro.
     top + insets.top,
     horizontal + insets.right,
@@ -592,7 +592,7 @@ Future<T?> showFormSheet<T>({
                   child: builder(sheetContext),
                 ),
               ),
-              // Barra azioni fissa: mai coperta da tastiera né da barra di
+              // Barra azioni fissa: mai coperta da tastiera nÃƒÂ© da barra di
               // navigazione di sistema (SafeArea + padding minimo 16).
               SafeArea(
                 top: false,
@@ -655,7 +655,7 @@ class LabeledField extends StatelessWidget {
   }
 }
 
-/// Riga di chip di scelta (più rapida dei dropdown).
+/// Riga di chip di scelta (piÃƒÂ¹ rapida dei dropdown).
 class ChoiceRow<T> extends StatelessWidget {
   const ChoiceRow({
     super.key,
@@ -808,7 +808,7 @@ class FilterChipX extends StatelessWidget {
 
 /// Selettore delle azioni correttive per letture fuori limite: righe
 /// checkbox al posto dei chip. Con testi lunghi i chip troncano l'etichetta
-/// ("…guarnizi…"); qui il testo va a capo restando integro e ogni riga ha
+/// ("Ã¢â‚¬Â¦guarniziÃ¢â‚¬Â¦"); qui il testo va a capo restando integro e ogni riga ha
 /// area di tocco >= 48 dp.
 class CorrectiveActionPicker extends StatelessWidget {
   const CorrectiveActionPicker({
@@ -915,7 +915,7 @@ class DateField extends StatelessWidget {
   }
 }
 
-/// Indicatore di conformità in tempo reale per il campo temperatura.
+/// Indicatore di conformitÃƒÂ  in tempo reale per il campo temperatura.
 class ComplianceIndicator extends StatelessWidget {
   const ComplianceIndicator({
     super.key,
@@ -1393,4 +1393,291 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RingPainter oldDelegate) =>
       oldDelegate.percent != percent;
+}
+
+/// Azione di [ActionButtonRow] (Prompt 16, Ã‚Â§1).
+class ActionButtonData {
+  const ActionButtonData({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.tooltip,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  /// Descrizione lunga per tooltip e semantica.
+  final String? tooltip;
+
+  /// Contatore facoltativo (badge) sull'icona, mai testo extra.
+  final int? badge;
+}
+
+/// Riga di azioni compatte (Prompt 16, Ã‚Â§1): N pulsanti uguali in
+/// ORIZZONTALE, icona sopra e testo sotto su UNA riga, altezza fissa
+/// 56 dp. Se la larghezza per pulsante scende sotto 72 dp passa a una
+/// griglia a due colonne, sempre con pulsanti uguali: mai testo
+/// spezzato una lettera per riga, mai overflow nÃƒÂ© scroll orizzontale.
+///
+/// Regola di progetto (docs/qa_layout.md): piÃ¹ di due azioni in
+/// riga â†’ `ActionButtonRow`; mai `Expanded(OutlinedButton.icon)` con
+/// tre o piÃ¹ pulsanti.
+class ActionButtonRow extends StatelessWidget {
+  const ActionButtonRow({super.key, required this.actions});
+
+  final List<ActionButtonData> actions;
+
+  static const double buttonHeight = 56;
+  static const double spacing = 8;
+  static const double minPerButton = 72;
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+
+    Widget content(ActionButtonData action) {
+      final label = Text(
+        action.label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelMedium,
+      );
+      final icon = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(action.icon, size: 22),
+          if ((action.badge ?? 0) > 0)
+            Positioned(
+              right: -10,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 1,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                constraints: const BoxConstraints(minWidth: 14),
+                child: Text(
+                  '${action.badge}',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+      return Tooltip(
+        message: action.tooltip ?? action.label,
+        child: Semantics(
+          button: true,
+          label: action.tooltip ?? action.label,
+          child: OutlinedButton(
+            onPressed: action.onPressed,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              minimumSize: const Size(48, buttonHeight),
+              maximumSize: const Size(double.infinity, buttonHeight),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                icon,
+                const SizedBox(height: 3),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: label,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxWidth;
+        final perButton =
+            (available - spacing * (actions.length - 1)) / actions.length;
+        if (actions.length <= 2 || perButton >= minPerButton) {
+          return Row(
+            children: [
+              for (var i = 0; i < actions.length; i++) ...[
+                Expanded(
+                  child: SizedBox(
+                    height: buttonHeight,
+                    child: content(actions[i]),
+                  ),
+                ),
+                if (i < actions.length - 1) const SizedBox(width: spacing),
+              ],
+            ],
+          );
+        }
+        // Schermo stretto o molte azioni: due colonne, sempre uguali.
+        final half = (available - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final action in actions)
+              SizedBox(
+                width: half,
+                height: buttonHeight,
+                child: content(action),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Voce di [SearchablePickerField].
+class PickerItem<T> {
+  const PickerItem({required this.value, required this.title, this.subtitle});
+
+  final T value;
+  final String title;
+  final String? subtitle;
+}
+
+/// Campo di selezione a larghezza piena con pannello di scelta e ricerca
+/// testuale quando le voci sono più di 6 (Prompt 16, §8): sostituisce
+/// i chip che mostravano solo i primi N elementi di liste che crescono
+/// (prodotti, fornitori, lotti). Nessun limite sul numero di voci.
+class SearchablePickerField<T> extends StatelessWidget {
+  const SearchablePickerField({
+    super.key,
+    required this.label,
+    required this.selectedLabel,
+    required this.items,
+    required this.onPicked,
+    this.enabled = true,
+    this.hint,
+  });
+
+  final String label;
+  final String selectedLabel;
+  final List<PickerItem<T>> items;
+  final ValueChanged<T?> onPicked;
+  final bool enabled;
+  final String? hint;
+
+  Future<void> _open(BuildContext context) async {
+    final queryController = TextEditingController();
+    final picked = await showModalBottomSheet<PickerItem<T>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final query = queryController.text.trim().toLowerCase();
+            final filtered = query.isEmpty
+                ? items
+                : items
+                    .where((item) => item.title.toLowerCase().contains(query))
+                    .toList();
+            return SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                    child: items.length > 6
+                        ? TextField(
+                            key: const Key('picker_search_field'),
+                            controller: queryController,
+                            onChanged: (_) => setSheetState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Cerca',
+                              prefixIcon: Icon(Icons.search),
+                              isDense: true,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(child: Text('Nessuna corrispondenza.'))
+                        : ListView(
+                            children: [
+                              for (final item in filtered)
+                                ListTile(
+                                  title: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: item.subtitle == null
+                                      ? null
+                                      : Text(
+                                          item.subtitle!,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                  onTap: () =>
+                                      Navigator.pop(sheetContext, item),
+                                ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    // Dispose dopo il frame: il foglio in chiusura pu\u00F2 ancora leggere
+    // il controller durante l'animazione.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      queryController.dispose();
+    });
+    onPicked(picked?.value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Opacity(
+      opacity: enabled ? 1 : 0.6,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: enabled ? () => _open(context) : null,
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            suffixIcon: const Icon(Icons.arrow_drop_down),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text(
+            selectedLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      ),
+    );
+  }
 }

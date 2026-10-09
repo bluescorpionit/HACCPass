@@ -8,7 +8,7 @@ import 'niim_blue_adapter.dart';
 import 'niimbot_label_printer.dart';
 import 'system_label_printer.dart';
 
-/// Impostazioni stampante (Prompt 11, §1/§4): il motore salvato viene
+/// Impostazioni stampante (Prompt 11, Â§1/Â§4): il motore salvato viene
 /// ricostruito da questi valori; la riconnessione avviene SOLO quando
 /// serve (alla prima stampa), mai all'avvio.
 class PrintSettings {
@@ -40,17 +40,16 @@ class PrintSettings {
     Future<String> value(String key, String fallback) async {
       if (cache.containsKey(key)) return cache[key]!;
       final raw = await read(key);
-      return cache[key] =
-          raw != null && raw.isNotEmpty ? raw : fallback;
+      return cache[key] = raw != null && raw.isNotEmpty ? raw : fallback;
     }
+
     final engine = await value('printer_engine', '');
     final labelFormat = await value('label_format', '62x40');
     final format = await value('printer_label_format', labelFormat);
     final density = int.tryParse(await value('printer_density', '3')) ?? 3;
-    final language =
-        await value('printer_generic_language', 'escpos') == 'tspl'
-            ? GenericLanguage.tspl
-            : GenericLanguage.escpos;
+    final language = await value('printer_generic_language', 'escpos') == 'tspl'
+        ? GenericLanguage.tspl
+        : GenericLanguage.escpos;
     final characteristic = await value('printer_generic_characteristic', '');
     final dotsRaw = await value('printer_generic_printable_dots', '');
     return PrintSettings(
@@ -70,6 +69,17 @@ class PrintSettings {
                 58,
         printableWidthDots: int.tryParse(dotsRaw),
         invertTspl: await value('printer_generic_invert', '0') == '1',
+        bandRows:
+            int.tryParse(await value('printer_generic_band_rows', '128')) ??
+                128,
+        cutter: await value('printer_generic_cutter', '0') == '1',
+        formFeed: await value('printer_generic_form_feed', '0') == '1',
+        antiAdvance: await value('printer_generic_anti_advance', '0') == '1',
+        feedMm:
+            double.tryParse(await value('printer_generic_feed_mm', '4')) ?? 4,
+        port: int.tryParse(await value('printer_generic_port', '9100')) ?? 9100,
+        speed: await value('printer_generic_speed', 'normal'),
+        fitMode: await value('printer_generic_fit_mode', 'ask'),
       ),
     );
   }
@@ -97,6 +107,17 @@ class PrintSettings {
     await set('printer_generic_printable_dots',
         generic.printableWidthDots?.toString() ?? '');
     await set('printer_generic_invert', generic.invertTspl ? '1' : '0');
+    await set('printer_generic_band_rows', generic.bandRows.toString());
+    await set('printer_generic_cutter', generic.cutter ? '1' : '0');
+    await set('printer_generic_form_feed', generic.formFeed ? '1' : '0');
+    await set(
+      'printer_generic_anti_advance',
+      generic.antiAdvance ? '1' : '0',
+    );
+    await set('printer_generic_feed_mm', generic.feedMm.toString());
+    await set('printer_generic_port', generic.port.toString());
+    await set('printer_generic_speed', generic.speed);
+    await set('printer_generic_fit_mode', generic.fitMode);
   }
 }
 
@@ -109,7 +130,7 @@ class PrintCancel {
 /// Costruisce e gestisce il motore salvato nelle impostazioni:
 /// - `printPdf` ricollega la stampante salvata SOLO quando serve;
 /// - stampa a coda, un'etichetta alla volta, con avanzamento e annulla;
-/// - ogni [PrintResult] ha già il messaggio in italiano.
+/// - ogni [PrintResult] ha giÃ  il messaggio in italiano.
 class PrintCoordinator {
   PrintCoordinator._(this.settings, this.engine);
 
@@ -125,14 +146,14 @@ class PrintCoordinator {
   /// solo in debug).
   static Future<PrintCoordinator> load(
     HaccpRepository repository, {
-    Map<String, LabelPrinter Function()>? engineFactories,
+    Map<String, LabelPrinter Function(PrintSettings settings)>? engineFactories,
   }) =>
       loadFrom(repository.getSetting, engineFactories: engineFactories);
 
   @visibleForTesting
   static Future<PrintCoordinator> loadFrom(
     Future<String?> Function(String key) read, {
-    Map<String, LabelPrinter Function()>? engineFactories,
+    Map<String, LabelPrinter Function(PrintSettings settings)>? engineFactories,
   }) async {
     final settings = await PrintSettings.load(read);
     if (!settings.isConfigured) {
@@ -143,18 +164,27 @@ class PrintCoordinator {
     if (factory == null || (settings.engine == 'demo' && kReleaseMode)) {
       return PrintCoordinator._(settings, null);
     }
-    return PrintCoordinator._(settings, factory());
+    // Prompt 16, Â§7.1: la factory riceve le impostazioni: il motore
+    // generico nasce CON la configurazione salvata (linguaggio, dpi,
+    // carta, punti, inversione, bande, taglierinaâ€¦).
+    return PrintCoordinator._(settings, factory(settings));
   }
 
-  static Map<String, LabelPrinter Function()> get defaultEngineFactories => {
-        'brother': BrotherLabelPrinter.new,
-        'niimbot': () => NiimbotLabelPrinter(adapter: NiimBlueClientAdapter()),
-        'generic': GenericLabelPrinter.new,
-        'system': SystemLabelPrinter.new,
-        if (kDebugMode) 'demo': DemoLabelPrinter.new,
-      };
+  /// Le factory ricevono le [PrintSettings]: il motore generico usa
+  /// `settings.generic` (bug del Prompt 16, Â§7.1: prima nasceva con la
+  /// configurazione di default e TSPL/300 dpi/80 mm/BLEâ€¦ erano ignorati).
+  static Map<String, LabelPrinter Function(PrintSettings settings)>
+      get defaultEngineFactories => {
+            'brother': (_) => BrotherLabelPrinter(),
+            'niimbot': (_) =>
+                NiimbotLabelPrinter(adapter: NiimBlueClientAdapter()),
+            'generic': (settings) =>
+                GenericLabelPrinter(config: settings.generic),
+            'system': (_) => SystemLabelPrinter(),
+            if (kDebugMode) 'demo': (_) => DemoLabelPrinter(),
+          };
 
-  /// Motori mostrati in Impostazioni → Stampante (il demo solo in debug).
+  /// Motori mostrati in Impostazioni â†’ Stampante (il demo solo in debug).
   static List<LabelPrinter> availableEngines() => [
         BrotherLabelPrinter(),
         NiimbotLabelPrinter(adapter: NiimBlueClientAdapter()),
@@ -165,7 +195,7 @@ class PrintCoordinator {
 
   bool get isConfigured => engine != null && settings.isConfigured;
 
-  /// Il motore è la stampa di sistema (nessun dispositivo da collegare).
+  /// Il motore Ã¨ la stampa di sistema (nessun dispositivo da collegare).
   bool get needsDevice =>
       isConfigured &&
       engine!.id != 'system' &&
@@ -235,8 +265,10 @@ class PrintCoordinator {
     final id = settings.deviceId;
     if (id.startsWith('wifi:')) return PrintTransport.wifi;
     if (id.startsWith('bt:')) return PrintTransport.bluetooth;
-    if (settings.engine == 'niimbot' ||
-        settings.generic.transport == 'ble') {
+    if (settings.generic.transport == 'bluetooth') {
+      return PrintTransport.bluetooth;
+    }
+    if (settings.engine == 'niimbot' || settings.generic.transport == 'ble') {
       return PrintTransport.ble;
     }
     return PrintTransport.wifi;

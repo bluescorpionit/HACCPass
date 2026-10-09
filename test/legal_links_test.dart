@@ -17,9 +17,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('AppLinks: costanti coerenti (una sola fonte)', () {
-    expect(AppLinks.base, 'https://www.bluescorpion.it/haacpass');
-    expect(AppLinks.privacyUrl, '${AppLinks.base}/privacy');
-    expect(AppLinks.termsUrl, '${AppLinks.base}/termini');
+    expect(AppLinks.base, 'https://www.bluescorpion.it/haccpass');
+    expect(AppLinks.privacyUrl, '${AppLinks.base}/privacy.html');
+    expect(AppLinks.termsUrl, '${AppLinks.base}/termini.html');
     expect(AppLinks.supportEmail, contains('@'));
   });
 

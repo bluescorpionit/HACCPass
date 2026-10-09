@@ -67,9 +67,13 @@ int rasterWidthForMm(double mm, int dpi) {
 }
 
 /// Converte pixel RGBA (come `PdfRaster.pixels`) in monocromo, scalando
-/// al nearest-neighbor sulla larghezza target. La luminanza sotto la
-/// [threshold] (default 128) diventa nero: soglia più alta = stampa più
-/// scura.
+/// al nearest-neighbor sulla larghezza target.
+///
+/// I PDF rasterizzati possono avere sfondo trasparente (alpha = 0): prima
+/// della soglia i pixel vengono compositati su bianco per evitare etichette
+/// completamente nere dovute a RGB=0 con alpha nullo.
+/// La luminanza sotto la [threshold] (default 128) diventa nero: soglia più
+/// alta = stampa più scura.
 MonoBitmap monochromeFromRgba(
   Uint8List rgba,
   int srcWidth,
@@ -88,7 +92,11 @@ MonoBitmap monochromeFromRgba(
     for (var x = 0; x < width; x++) {
       final sx = (x * scale).floor().clamp(0, srcWidth - 1);
       final i = (sy * srcWidth + sx) * 4;
-      final luma = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+      final alpha = rgba[i + 3] / 255.0;
+      final red = rgba[i] * alpha + 255 * (1 - alpha);
+      final green = rgba[i + 1] * alpha + 255 * (1 - alpha);
+      final blue = rgba[i + 2] * alpha + 255 * (1 - alpha);
+      final luma = 0.299 * red + 0.587 * green + 0.114 * blue;
       if (luma < threshold) {
         packed[y * bytesPerRow + (x >> 3)] |= 1 << (7 - (x & 7));
       }

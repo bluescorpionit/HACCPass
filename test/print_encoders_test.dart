@@ -41,13 +41,9 @@ void main() {
       expect(bytes.length, 8 + 8 * 3, reason: 'intestazione + dati');
     });
 
-    test('etichetta: init, una copia per volta, feed finale e taglio',
+    test('lavoro: init, una banda per copia, feed finale (niente taglio)',
         () async {
-      final bytes = encoder.label(
-        image(),
-        copies: 2,
-        feedLines: 10,
-      );
+      final bytes = encoder.label(image(), copies: 2, feedLines: 10);
       // ESC @ in testa.
       expect(bytes.sublist(0, 2), [0x1B, 0x40]);
       final asString = bytes;
@@ -61,14 +57,77 @@ void main() {
         }
       }
       expect(count, 2, reason: 'una raster per copia');
-      // Chiude con feed e taglio.
-      expect(
-        bytes.sublist(bytes.length - 5),
-        [0x1B, 0x64, 10, 0x1D, 0x56, 0x00].sublist(1),
+      // Chiude con il feed e NESSUN taglio (default: taglierina spenta).
+      expect(bytes.sublist(bytes.length - 3),
+          [0x1B, 0x64, 10]);
+      expect(asString.contains(0x1D), isTrue);
+      expect(bytes.where((b) => b == 0x56), isEmpty,
+          reason: 'GS V assente senza taglierina');
+    });
+
+    test('taglierina attiva: GS V presente; form feed: 0x0C presente', () {
+      final withCut = encoder.label(image(), feedLines: 0, cut: true);
+      final withFf = encoder.label(image(), feedLines: 0, formFeed: true);
+      expect(withCut.where((b) => b == 0x56), isNotEmpty);
+      expect(withFf.contains(0x0C), isTrue);
+      expect(withCut.contains(0x0C), isFalse);
+    });
+
+    test('bande: 496x320 con banda 128 → 3 blocchi 128+128+64, stessi byte',
+        () {
+      final full = image(width: 496, height: 320);
+      final segments = encoder.labelSegments(
+        full,
+        options: const EscPosOptions(bandRows: 128, feedRows: 0),
       );
-      expect(bytes[bytes.length - 6], 0x1B);
-      expect(bytes[bytes.length - 5], 0x64);
-      expect(bytes[bytes.length - 4], 10);
+      final rasterSegments =
+          segments.where((s) => s[0] == 0x1D).toList();
+      expect(rasterSegments.length, 3);
+      // Altezze: 128, 128, 64 (yL/yH).
+      expect(rasterSegments[0][6], 128);
+      expect(rasterSegments[0][7], 0);
+      expect(rasterSegments[1][6], 128);
+      expect(rasterSegments[2][6], 64);
+      // I dati delle bande ricostruiscono l'immagine completa.
+      final rebuilt = <int>[
+        for (final segment in rasterSegments)
+          ...segment.sublist(8),
+      ];
+      expect(rebuilt.length, full.packed.length);
+      for (var i = 0; i < full.packed.length; i++) {
+        expect(rebuilt[i], full.packed[i],
+            reason: 'i byte delle bande sono identici all\'immagine');
+      }
+    });
+
+    test('bande: 24 righe per i modelli vecchi', () {
+      final segments = encoder.labelSegments(
+        image(width: 8, height: 50),
+        options: const EscPosOptions(bandRows: 24, feedRows: 0),
+      );
+      final heights =
+          segments.where((s) => s[0] == 0x1D).map((s) => s[6]).toList();
+      expect(heights, [24, 24, 2]);
+    });
+
+    test('feedRowsForMm: 4 mm a 203 dpi ≈ 32 righe', () {
+      expect(EscPosOptions.feedRowsForMm(4, 203), 32);
+    });
+
+    test('prova solo testo: ESC @ + testo + 3 righe (+ taglio opzionale)',
+        () {
+      final text = encoder.plainTextTest();
+      expect(text.sublist(0, 2), [0x1B, 0x40]);
+      expect(
+        String.fromCharCodes(text.sublist(2)).startsWith('HACCPass prova'),
+        isTrue,
+      );
+      // ESC d 3 e nessun taglio di default.
+      expect(text[text.length - 3], 0x1B);
+      expect(text[text.length - 2], 0x64);
+      expect(text[text.length - 1], 3);
+      final withCut = encoder.plainTextTest(cut: true);
+      expect(withCut.where((b) => b == 0x56), isNotEmpty);
     });
   });
 

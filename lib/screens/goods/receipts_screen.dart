@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../core/constants/haccp_rules.dart';
 import '../../core/theme/app_theme.dart';
@@ -60,8 +60,7 @@ class ReceiptsScreen extends StatelessWidget {
         final attachmentCounts = data.$2;
         return FeatureScaffold(
           title: 'Merce in arrivo',
-          subtitle:
-              'Registra i controlli al ricevimento (PRP 10): se un '
+          subtitle: 'Registra i controlli al ricevimento (PRP 10): se un '
               'controllo fallisce l\u2019app propone "Respinta" e apre '
               'la NC fornitore.',
           floatingActionButton: FloatingActionButton.extended(
@@ -108,19 +107,16 @@ class ReceiptsScreen extends StatelessWidget {
                               if (!context.mounted) break;
                               await registerReceipt(
                                 context,
-                                queueLabel:
-                                    'Riga ${i + 1} di ${rows.length}',
+                                queueLabel: 'Riga ${i + 1} di ${rows.length}',
                                 prefill: (
                                   supplierName: head.supplierName?.value,
-                                  supplierVat:
-                                      head.supplierVat?.value ?? '',
+                                  supplierVat: head.supplierVat?.value ?? '',
                                   product: rows[i].product,
                                   lot: rows[i].lot,
                                   ddt: head.docNumber?.value,
                                   expiresAt: rows[i].expiresAt,
                                   quantity: rows[i].quantity,
-                                  attachment:
-                                      i == 0 ? attachment : null,
+                                  attachment: i == 0 ? attachment : null,
                                 ),
                               );
                             }
@@ -138,8 +134,7 @@ class ReceiptsScreen extends StatelessWidget {
                 EmptyState(
                   icon: Icons.local_shipping_outlined,
                   title: 'Nessuna merce registrata',
-                  message:
-                      'Registra le consegne per tracciare temperatura e '
+                  message: 'Registra le consegne per tracciare temperatura e '
                       'controlli del fornitore.',
                   actionLabel: 'Registra consegna',
                   onAction: () => _newReceipt(context),
@@ -179,13 +174,12 @@ class ReceiptsScreen extends StatelessWidget {
         return s;
       }
     }
-    // Similarità per token comuni (>60%): gestisce "Società X SRL" vs "X".
+    // SimilaritÃƒÂ  per token comuni (>60%): gestisce "SocietÃƒÂ  X SRL" vs "X".
     final targetTokens = target.split(' ').toSet();
     for (final s in suppliers) {
       final tokens = normalize(s.name).split(' ').toSet();
       if (targetTokens.isEmpty || tokens.isEmpty) continue;
-      final common =
-          targetTokens.intersection(tokens).length;
+      final common = targetTokens.intersection(tokens).length;
       if (common / targetTokens.length >= 0.6) return s;
     }
     return suppliers.first;
@@ -224,8 +218,7 @@ class ReceiptsScreen extends StatelessWidget {
       text: qtyPrefill == null
           ? ''
           : qtyPrefill
-              .toStringAsFixed(
-                  qtyPrefill == qtyPrefill.roundToDouble() ? 0 : 3)
+              .toStringAsFixed(qtyPrefill == qtyPrefill.roundToDouble() ? 0 : 3)
               .replaceAll('.', ','),
     );
     final noteController = TextEditingController();
@@ -237,7 +230,7 @@ class ReceiptsScreen extends StatelessWidget {
         'Foto di DDT, etichetta o stato della merce al momento del controllo.';
 
     // Fornitore: corrispondenza approssimata con il nome letto dal
-    // documento (normalizzazione + similarità); se non c'è, resta il
+    // documento (normalizzazione + similaritÃƒÂ ); se non c'ÃƒÂ¨, resta il
     // primo e l'operatore sceglie.
     var supplier = _matchSupplier(suppliers, prefill?.supplierName);
     var category = goodsCategories.first;
@@ -262,20 +255,27 @@ class ReceiptsScreen extends StatelessWidget {
                 ? true
                 : (cat.minTemp == null || temp >= cat.minTemp!) &&
                     (cat.maxTemp == null || temp <= cat.maxTemp!);
-            final allOk =
-                packagingOk && labelOk && expiryOk && vehicleOk && tempCompliant;
+            final allOk = packagingOk &&
+                labelOk &&
+                expiryOk &&
+                vehicleOk &&
+                tempCompliant;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 LabeledField(
                   label: 'Fornitore',
-                  child: ChoiceRow<Supplier>(
-                    options: [
-                      for (final s in suppliers.take(6)) (s, s.name),
+                  // Prompt 16, Ã‚Â§8: i fornitori crescono nel tempo: menu
+                  // ricercabile completo (niente piÃƒÂ¹ take(6)).
+                  child: SearchablePickerField<Supplier>(
+                    label: 'Seleziona il fornitore',
+                    selectedLabel: supplier.name,
+                    items: [
+                      for (final s in suppliers)
+                        PickerItem(value: s, title: s.name),
                     ],
-                    selected: supplier,
-                    onSelected: (v) => setSheetState(() => supplier = v),
+                    onPicked: (v) => setSheetState(() => supplier = v!),
                   ),
                 ),
                 LabeledField(
@@ -356,28 +356,36 @@ class ReceiptsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _checkTile(
-                  context, 'Integrit\u00E0 confezioni', packagingOk,
+                  context,
+                  'Integrit\u00E0 confezioni',
+                  packagingOk,
                   (v) => setSheetState(() {
                     packagingOk = v;
                     if (!v) proposedRejected = true;
                   }),
                 ),
                 _checkTile(
-                  context, 'Etichetta corretta', labelOk,
+                  context,
+                  'Etichetta corretta',
+                  labelOk,
                   (v) => setSheetState(() {
                     labelOk = v;
                     if (!v) proposedRejected = true;
                   }),
                 ),
                 _checkTile(
-                  context, 'Scadenza valida', expiryOk,
+                  context,
+                  'Scadenza valida',
+                  expiryOk,
                   (v) => setSheetState(() {
                     expiryOk = v;
                     if (!v) proposedRejected = true;
                   }),
                 ),
                 _checkTile(
-                  context, 'Mezzo di trasporto igienico', vehicleOk,
+                  context,
+                  'Mezzo di trasporto igienico',
+                  vehicleOk,
                   (v) => setSheetState(() {
                     vehicleOk = v;
                     if (!v) proposedRejected = true;
@@ -419,8 +427,8 @@ class ReceiptsScreen extends StatelessWidget {
       return;
     }
 
-    final temp = double.tryParse(
-        tempController.text.trim().replaceAll(',', '.'));
+    final temp =
+        double.tryParse(tempController.text.trim().replaceAll(',', '.'));
 
     final receiptId = await repository.saveReceipt(
       Receipt(

@@ -198,33 +198,32 @@ class _NcCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            Row(
-              children: [
+            // Prompt 16, §3: tre azioni in riga → ActionButtonRow.
+            ActionButtonRow(
+              actions: [
                 if (nc.isOpen)
-                  Expanded(
-                    child: FilledButton.tonal(
-                      onPressed: () => _close(context),
-                      child: const Text('Risolvi e chiudi'),
-                    ),
+                  ActionButtonData(
+                    icon: Icons.task_alt_outlined,
+                    label: 'Risolvi',
+                    tooltip: 'Risolvi e chiudi la non conformit\u00E0',
+                    onPressed: () => _close(context),
                   )
                 else
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _printForm(context),
-                      icon: const Icon(Icons.description_outlined),
-                      label: const Text('Modulo NC'),
-                    ),
+                  ActionButtonData(
+                    icon: Icons.description_outlined,
+                    label: 'Modulo NC',
+                    tooltip: 'Modulo non conformit\u00E0 in PDF',
+                    onPressed: () => _printForm(context),
                   ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _printSign(context),
-                    icon: const Icon(Icons.warning_amber_outlined),
-                    label: const Text('Cartello'),
-                  ),
+                ActionButtonData(
+                  icon: Icons.warning_amber_outlined,
+                  label: 'Cartello',
+                  tooltip: 'Cartello di avvertenza',
+                  onPressed: () => _printSign(context),
                 ),
-                const SizedBox(width: 10),
-                IconButton.outlined(
+                ActionButtonData(
+                  icon: Icons.attach_file,
+                  label: 'Allegati',
                   tooltip: 'Foto e allegati',
                   onPressed: () => showAttachmentsSheet(
                     context,
@@ -233,7 +232,6 @@ class _NcCard extends StatelessWidget {
                     entityId: nc.id,
                     title: nc.title,
                   ),
-                  icon: const Icon(Icons.attach_file),
                 ),
               ],
             ),

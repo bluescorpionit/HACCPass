@@ -116,12 +116,18 @@ class RecallScreen extends StatelessWidget {
               if (lots.isNotEmpty)
                 LabeledField(
                   label: 'Lotto in produzione',
-                  child: ChoiceRow<String>(
-                    options: [
-                      for (final lot in lots.take(8)) (lot.code, lot.code),
+                  // Prompt 16, §8: i lotti crescono: menu ricercabile
+                  // completo (niente più take(8)).
+                  child: SearchablePickerField<String>(
+                    label: 'Seleziona il lotto',
+                    selectedLabel: lotCode,
+                    items: [
+                      for (final lot in lots)
+                        PickerItem(value: lot.code, title: lot.code),
                     ],
-                    selected: lotCode,
-                    onSelected: (v) => setSheetState(() => lotCode = v),
+                    onPicked: (v) => setSheetState(
+                      () => lotCode = v ?? lotCode,
+                    ),
                   ),
                 ),
               LabeledField(

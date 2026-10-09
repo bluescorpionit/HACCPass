@@ -5,6 +5,7 @@ import '../services/backup_service.dart';
 import '../services/license_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/exit_confirm_scope.dart';
 import 'checks_hub_screen.dart';
 import 'company_screen.dart';
 import 'dashboard_screen.dart';
@@ -29,6 +30,7 @@ class AppShell extends StatefulWidget {
     required this.backup,
     required this.attachments,
     required this.reminders,
+    this.onConfirmExit,
   });
 
   final HaccpRepository repository;
@@ -37,6 +39,9 @@ class AppShell extends StatefulWidget {
   final BackupService backup;
   final dynamic attachments;
   final dynamic reminders;
+
+  /// Handler di uscita iniettabile per i test (Prompt 14, §3).
+  final Future<void> Function()? onConfirmExit;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -220,105 +225,119 @@ class _AppShellState extends State<AppShell> {
       ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 900;
-
-        if (!wide) {
-          return Scaffold(
-            body: IndexedStack(index: index, children: screens),
-            bottomNavigationBar: AppBottomBar(
-              items: [
-                AppNavItem(
-                  label: 'Oggi',
-                  icon: Icons.home_outlined,
-                  selectedIcon: Icons.home,
-                  badge: 0,
-                ),
-                AppNavItem(
-                  label: 'Controlli',
-                  icon: Icons.fact_check_outlined,
-                  selectedIcon: Icons.fact_check,
-                  badge: 0,
-                ),
-                AppNavItem(
-                  label: 'Lotti',
-                  icon: Icons.inventory_2_outlined,
-                  selectedIcon: Icons.inventory_2,
-                  badge: 0,
-                ),
-                AppNavItem(
-                  label: 'Report',
-                  icon: Icons.picture_as_pdf_outlined,
-                  selectedIcon: Icons.picture_as_pdf,
-                  badge: 0,
-                ),
-                AppNavItem(
-                  label: 'Altro',
-                  icon: Icons.menu_outlined,
-                  selectedIcon: Icons.menu,
-                  badge: 0,
-                ),
-              ],
-              currentIndex: index,
-              onSelected: (value) => setState(() => index = value),
-            ),
-          );
+    // Prompt 14, §3: Indietro dalla shell: se la scheda attiva non è
+    // "Oggi" ci si torna prima (senza dialog); da "Oggi" conferma
+    // d'uscita. Le schermate pushate sopra non fanno mai scattare questo
+    // PopScope: si chiudono normalmente con Indietro.
+    return ExitConfirmScope(
+      onBeforeConfirm: () {
+        if (index != 0) {
+          setState(() => index = 0);
+          return true;
         }
+        return false;
+      },
+      onConfirmExit: widget.onConfirmExit,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 900;
 
-        return Scaffold(
-          body: Row(
-            children: [
-              NavigationRail(
-                selectedIndex: index,
-                onDestinationSelected: (value) =>
-                    setState(() => index = value),
-                labelType: NavigationRailLabelType.all,
-                leading: const Padding(
-                  padding: EdgeInsets.only(top: 16, bottom: 24),
-                  child: CircleAvatar(
-                    radius: 24,
-                    child: Icon(Icons.verified_user_outlined),
+          if (!wide) {
+            return Scaffold(
+              body: IndexedStack(index: index, children: screens),
+              bottomNavigationBar: AppBottomBar(
+                items: [
+                  AppNavItem(
+                    label: 'Oggi',
+                    icon: Icons.home_outlined,
+                    selectedIcon: Icons.home,
+                    badge: 0,
                   ),
-                ),
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home),
-                    label: Text('Oggi'),
+                  AppNavItem(
+                    label: 'Controlli',
+                    icon: Icons.fact_check_outlined,
+                    selectedIcon: Icons.fact_check,
+                    badge: 0,
                   ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.fact_check_outlined),
-                    selectedIcon: Icon(Icons.fact_check),
-                    label: Text('Controlli'),
+                  AppNavItem(
+                    label: 'Lotti',
+                    icon: Icons.inventory_2_outlined,
+                    selectedIcon: Icons.inventory_2,
+                    badge: 0,
                   ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.inventory_2_outlined),
-                    selectedIcon: Icon(Icons.inventory_2),
-                    label: Text('Lotti'),
+                  AppNavItem(
+                    label: 'Report',
+                    icon: Icons.picture_as_pdf_outlined,
+                    selectedIcon: Icons.picture_as_pdf,
+                    badge: 0,
                   ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.picture_as_pdf_outlined),
-                    selectedIcon: Icon(Icons.picture_as_pdf),
-                    label: Text('Report'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.menu_outlined),
-                    selectedIcon: Icon(Icons.menu),
-                    label: Text('Altro'),
+                  AppNavItem(
+                    label: 'Altro',
+                    icon: Icons.menu_outlined,
+                    selectedIcon: Icons.menu,
+                    badge: 0,
                   ),
                 ],
+                currentIndex: index,
+                onSelected: (value) => setState(() => index = value),
               ),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-              Expanded(child: IndexedStack(index: index, children: screens)),
-            ],
-          ),
-        );
-      },
+            );
+          }
+
+          return Scaffold(
+            body: Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: index,
+                  onDestinationSelected: (value) =>
+                      setState(() => index = value),
+                  labelType: NavigationRailLabelType.all,
+                  leading: const Padding(
+                    padding: EdgeInsets.only(top: 16, bottom: 24),
+                    child: CircleAvatar(
+                      radius: 24,
+                      child: Icon(Icons.verified_user_outlined),
+                    ),
+                  ),
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home),
+                      label: Text('Oggi'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.fact_check_outlined),
+                      selectedIcon: Icon(Icons.fact_check),
+                      label: Text('Controlli'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.inventory_2_outlined),
+                      selectedIcon: Icon(Icons.inventory_2),
+                      label: Text('Lotti'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.picture_as_pdf_outlined),
+                      selectedIcon: Icon(Icons.picture_as_pdf),
+                      label: Text('Report'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.menu_outlined),
+                      selectedIcon: Icon(Icons.menu),
+                      label: Text('Altro'),
+                    ),
+                  ],
+                ),
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+                Expanded(child: IndexedStack(index: index, children: screens)),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

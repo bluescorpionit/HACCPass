@@ -55,3 +55,4 @@ android/key.properties
 pubspec-1.yaml
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+upload_certificate.pem

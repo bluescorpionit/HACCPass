@@ -6,7 +6,7 @@ class AppLinks {
   AppLinks._();
 
   /// Percorso base delle pagine del prodotto.
-  static const String base = 'https://www.bluescorpion.it/haacpass';
+  static const String base = 'https://www.bluescorpion.it/haccpass';
 
   static const String privacyUrl = '$base/privacy.html';
 

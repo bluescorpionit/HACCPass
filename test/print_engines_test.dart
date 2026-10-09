@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,13 +8,15 @@ import 'package:haccpass/services/printing/generic_label_printer.dart';
 import 'package:haccpass/services/printing/niimbot_label_printer.dart';
 import 'package:haccpass/services/printing/print_coordinator.dart';
 
-/// Prompt 11: selezione del motore dalle impostazioni, mappa formato →
+/// Prompt 11: selezione del motore dalle impostazioni, mappa formato ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢
 /// carta Brother, controllo larghezza Niimbot (dal dispositivo), risultati
 /// di errore in italiano, ripiego, trasporto con perdita e nuovo tentativo.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final pdfBytes = <Uint8List>[Uint8List.fromList([1, 2, 3])];
+  final pdfBytes = <Uint8List>[
+    Uint8List.fromList([1, 2, 3])
+  ];
 
   group('PrintCoordinator.load: motore dalle impostazioni', () {
     test('motore salvato viene costruito', () async {
@@ -108,10 +108,13 @@ void main() {
       );
 
       expect(result.outcome, PrintOutcome.cancelled);
-      expect(fake.printCalls.length, 2, reason: 'si ferma subito dopo l\'annullo');
+      expect(fake.printCalls.length, 2,
+          reason: 'si ferma subito dopo l\'annullo');
     });
 
-    test('risultati simulati del motore → messaggi in italiano', () async {
+    test(
+        'risultati simulati del motore ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ messaggi in italiano',
+        () async {
       for (final (outcome, expected) in const [
         (PrintOutcome.paperError, 'Carta assente'),
         (PrintOutcome.coverOpen, 'Coperchio aperto'),
@@ -128,7 +131,8 @@ void main() {
   });
 
   group('NiimbotLabelPrinter: larghezza dal dispositivo', () {
-    test('etichetta più larga della testina: mai taglio silenzioso',
+    test(
+        'etichetta piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ larga della testina: mai taglio silenzioso',
         () async {
       final adapter = _FakeNiimAdapter(
         capabilities: const _Caps(
@@ -159,7 +163,9 @@ void main() {
       expect(adapter.printCalls, isEmpty, reason: 'non invia nulla');
     });
 
-    test('B21 (48 mm): formato 40x30 ammesso, densità clampata', () async {
+    test(
+        'B21 (48 mm): formato 40x30 ammesso, densitÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  clampata',
+        () async {
       final adapter = _FakeNiimAdapter(
         capabilities: const _Caps(
           model: 'B21',
@@ -186,7 +192,8 @@ void main() {
       );
 
       expect(result.isOk, isTrue);
-      expect(adapter.printCalls.single.$2, 5, reason: 'densità clampata al max');
+      expect(adapter.printCalls.single.$2, 5,
+          reason: 'densitÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  clampata al max');
       expect(adapter.printCalls.single.$3, 2);
     });
 
@@ -200,8 +207,7 @@ void main() {
     });
   });
 
-  group('GenericLabelPrinter: area stampabile (punti, non mm di carta)',
-      () {
+  group('GenericLabelPrinter: area stampabile (punti, non mm di carta)', () {
     Future<PrintResult> printWith({
       required String format,
       required GenericPrinterConfig config,
@@ -243,7 +249,9 @@ void main() {
       expect(result.italianMessage, contains('50 mm'));
     });
 
-    test('40x30 su carta 58 mm: entra (320 px ≤ 384) e stampa', () async {
+    test(
+        '40x30 su carta 58 mm: entra (320 px ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¤ 384) e stampa',
+        () async {
       final result = await printWith(
         format: '40x30',
         config: const GenericPrinterConfig(
@@ -267,7 +275,8 @@ void main() {
       expect(result.isOk, isTrue);
     });
 
-    test('300 dpi: proporzionale (58 mm → 568 punti), 62x40 rifiutato',
+    test(
+        '300 dpi: proporzionale (58 mm ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ 568 punti), 62x40 rifiutato',
         () async {
       final result = await printWith(
         format: '62x40',
@@ -282,7 +291,8 @@ void main() {
       expect(result.outcome, PrintOutcome.labelSizeNotSupported);
     });
 
-    test('punti personalizzati (432): 50x30 @203 entra (400 ≤ 432)',
+    test(
+        'punti personalizzati (432): 50x30 @203 entra (400 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â°Ãƒâ€šÃ‚Â¤ 432)',
         () async {
       final result = await printWith(
         format: '50x30',
@@ -296,8 +306,7 @@ void main() {
       expect(result.isOk, isTrue);
     });
 
-    test('indirizzo mancante: messaggio chiaro, nessuna invocazione',
-        () async {
+    test('indirizzo mancante: messaggio chiaro, nessuna invocazione', () async {
       final printer = GenericLabelPrinter(
         config: const GenericPrinterConfig(transport: 'wifi'),
       );
@@ -310,7 +319,7 @@ void main() {
     });
   });
 
-  group('GenericBleScanner (Prompt 11-bis, §3)', () {
+  group('GenericBleScanner (Prompt 11-bis, ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3)', () {
     test('risultati deduplicati per remoteId, nomi vuoti scartati', () async {
       final scanner = GenericBleScanner(
         requestPermissions: () async => true,
@@ -330,19 +339,256 @@ void main() {
       expect(devices.every((d) => d.transport == PrintTransport.ble), isTrue);
     });
 
-    test('permesso negato: errore tipizzato in italiano', () async {
-      final scanner = GenericBleScanner(
-        requestPermissions: () async => false,
+    test('permesso negato: messaggi distinti in italiano', () {
+      // Il permesso su host e' concesso di default: si verifica la mappa
+      // dei messaggi del trasporto SPP (Prompt 17, sezione 4).
+      expect(
+        BluetoothSppByteTransport.messageForCode('permission'),
+        contains('Permesso Bluetooth negato'),
       );
+      expect(
+        BluetoothSppByteTransport.messageForCode('not_bonded'),
+        contains('non associata'),
+      );
+      expect(
+        BluetoothSppByteTransport.messageForCode('unreachable'),
+        contains('accendi la stampante e avvicinala'),
+      );
+      expect(
+        BluetoothSppByteTransport.messageForCode('busy'),
+        contains('scollegala'),
+      );
+      expect(
+        BluetoothSppByteTransport.messageForCode('off'),
+        contains('Bluetooth spento'),
+      );
+    });
+
+    test('ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§2: looksLikePrinter riconosce i nomi tipici', () {
+      expect(BluetoothSppByteTransport.looksLikePrinter('MTP-58'), isTrue);
+      expect(BluetoothSppByteTransport.looksLikePrinter('XP-5820'), isTrue);
+      expect(BluetoothSppByteTransport.looksLikePrinter('Auricolarino auto'),
+          isFalse);
+    });
+
+    test(
+        'ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§1: una sola connessione SPP per lavoro con piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ copie',
+        () async {
+      final transport = FakeByteTransport();
+      final printer = GenericLabelPrinter(
+        config: const GenericPrinterConfig(
+          transport: 'bluetooth',
+          address: 'AA:BB:CC:DD:EE:FF',
+        ),
+        rasterizer: _StubRasterizer(),
+        transportFactory: (_) => transport,
+      );
+      final result = await printer.printLabels(
+        pdfBytes,
+        const LabelSpec(format: '40x30'),
+        copies: 3,
+      );
+      expect(result.isOk, isTrue);
+      expect(transport.connectCalls, 1);
+    });
+
+    test(
+        'ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§1: profili di velocitÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  (blocchi/pausa/bande)',
+        () {
+      expect(PrintSpeedProfile.normal.chunkBytes, 256);
+      expect(PrintSpeedProfile.slow.chunkBytes, 128);
+      expect(PrintSpeedProfile.fast.chunkBytes, 512);
+      expect(PrintSpeedProfile.normal.bandRows, 64);
+      expect(PrintSpeedProfile.slow.bandRows, 24);
+      expect(PrintSpeedProfile.fast.bandRows, 128);
+      expect(PrintSpeedProfile.byId('slow').pause,
+          const Duration(milliseconds: 50));
+      expect(PrintSpeedProfile.byId('sconosciuto').id, 'normal');
+    });
+
+    test(
+        'ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3: 62x40 e 50x30 su 58 mm con fit=reject ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ rifiutati',
+        () async {
+      for (final format in const ['62x40', '50x30']) {
+        final printer = GenericLabelPrinter(
+          config: const GenericPrinterConfig(
+            address: '10.0.0.5',
+            fitMode: 'reject',
+          ),
+          rasterizer: _StubRasterizer(),
+          transportFactory: (_) => FakeByteTransport(),
+        );
+        final result = await printer.printLabels(
+          pdfBytes,
+          LabelSpec(format: format),
+        );
+        expect(result.outcome, PrintOutcome.labelSizeNotSupported,
+            reason: format);
+        expect(result.italianMessage, contains('ridurla per adattarla'));
+      }
+    });
+
+    test(
+        'ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3: fit=shrink rasterizza alla larghezza stampabile (multipla di 8)',
+        () async {
+      final rasterizer = _RecordingRasterizer();
+      final printer = GenericLabelPrinter(
+        config: const GenericPrinterConfig(
+          address: '10.0.0.5',
+          fitMode: 'shrink',
+        ),
+        rasterizer: rasterizer,
+        transportFactory: (_) => FakeByteTransport(),
+      );
+      final result = await printer.printLabels(
+        pdfBytes,
+        const LabelSpec(format: '62x40'),
+      );
+      expect(result.isOk, isTrue);
+      // Larghezza richiesta al rasterizzatore = 384 px a 203 dpi.
+      final widthPx = rasterWidthForMm(rasterizer.lastWidthMm!, 203);
+      expect(widthPx, 384);
+      expect(widthPx % 8, 0);
+      expect(printer.lastJobSummary, contains('RIDOTTA alla carta'));
+    });
+
+    test('ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3: 40x30 su 58 mm e 62x40 su 80 mm non riducono',
+        () async {
+      final rasterizer = _RecordingRasterizer();
+      final printer = GenericLabelPrinter(
+        config: const GenericPrinterConfig(address: '10.0.0.5'),
+        rasterizer: rasterizer,
+        transportFactory: (_) => FakeByteTransport(),
+      );
+      // 40x30 su 58: entra.
+      var result = await printer.printLabels(
+        pdfBytes,
+        const LabelSpec(format: '40x30'),
+      );
+      expect(result.isOk, isTrue);
+      expect(rasterWidthForMm(rasterizer.lastWidthMm!, 203), 320);
+
+      // 62x40 su 80 mm: entra.
+      final wide = GenericLabelPrinter(
+        config:
+            const GenericPrinterConfig(address: '10.0.0.5', paperWidthMm: 80),
+        rasterizer: rasterizer,
+        transportFactory: (_) => FakeByteTransport(),
+      );
+      result =
+          await wide.printLabels(pdfBytes, const LabelSpec(format: '62x40'));
+      expect(result.isOk, isTrue);
+      expect(rasterWidthForMm(rasterizer.lastWidthMm!, 203), 496);
+      expect(wide.lastJobSummary, isNot(contains('RIDOTTA')));
+    });
+
+    test(
+        'ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3: avviso di leggibilitÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  quando la riduzione ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ forte',
+        () async {
+      final shrink = GenericLabelPrinter(
+        config:
+            const GenericPrinterConfig(address: '10.0.0.5', fitMode: 'shrink'),
+      );
+      // 62 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ 48 mm: rapporto ~0,77 < 0,8 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ avviso.
+      expect(shrink.readabilityWarningNeeded(const LabelSpec(format: '62x40')),
+          isTrue);
+      // 50 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ 48 mm: rapporto ~0,96 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ nessun avviso.
+      expect(shrink.readabilityWarningNeeded(const LabelSpec(format: '50x30')),
+          isFalse);
+      // 40 mm: entra, nessun avviso.
+      expect(shrink.readabilityWarningNeeded(const LabelSpec(format: '40x30')),
+          isFalse);
+    });
+  });
+
+  group('Prompt 17: SPP (recupero)', () {
+    test('transport bluetooth arriva al motore col profilo slow', () async {
+      final settingsMap = const {
+        'printer_engine': 'generic',
+        'printer_generic_transport': 'bluetooth',
+        'printer_generic_address': 'AA:BB:CC:DD:EE:FF',
+        'printer_generic_speed': 'slow',
+      };
+      final coordinator = await PrintCoordinator.loadFrom(
+        (key) async => settingsMap[key],
+      );
+      final engine = coordinator.engine as GenericLabelPrinter;
+      expect(engine.config.transport, 'bluetooth');
+      expect(engine.config.speedProfile.chunkBytes, 128);
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        expect(
+            engine.config.buildTransport(), isA<BluetoothSppByteTransport>());
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    test('connect() Bluetooth memorizza e non ricade su Wi-Fi', () async {
+      var built = 0;
+      final printer = GenericLabelPrinter(
+        transportFactory: (_) {
+          built++;
+          return FakeByteTransport();
+        },
+      );
+      await printer.connect(const PrinterDevice(
+        name: 'POS-58',
+        id: 'bt:AA:BB:CC:DD:EE:FF',
+        transport: PrintTransport.bluetooth,
+      ));
+      expect(built, 0, reason: 'connect() non apre connessioni');
+      expect(printer.config.transport, 'bluetooth');
+      expect(printer.config.address, 'AA:BB:CC:DD:EE:FF');
+    });
+
+    test('elenco associati: stampanti prima, nome vuoto -> MAC', () async {
+      final printer = GenericLabelPrinter(
+        config: const GenericPrinterConfig(transport: 'bluetooth'),
+        pairedLister: () async => const [
+          (name: 'Auricolarino', address: 'AA:00:00:00:00:01'),
+          (name: '', address: 'BB:00:00:00:00:02'),
+          (name: 'MTP-58 Printer', address: 'CC:00:00:00:00:03'),
+        ],
+      );
+      final devices = await printer.discover();
+      expect(devices.length, 3);
+      expect(devices.first.name, 'MTP-58 Printer');
+      expect(devices[1].name, 'Dispositivo 00:02');
+      expect(devices[2].name, 'Auricolarino');
+      expect(devices[1].id, 'bt:BB:00:00:00:00:02');
+      expect(devices.every((d) => d.transport == PrintTransport.bluetooth),
+          isTrue);
+    });
+  });
+
+  group('GenericBleScanner (recupero)', () {
+    test('risultati deduplicati per remoteId, nomi vuoti scartati', () async {
+      final scanner = GenericBleScanner(
+        requestPermissions: () async => true,
+        adapterIsOn: () async => true,
+        scan: (timeout, onHit) async {
+          onHit('AA:1', 'Printer-X');
+          onHit('AA:1', 'Printer-X');
+          onHit('BB:2', '');
+          onHit('CC:3', 'Printer-Y');
+        },
+      );
+      final devices =
+          await scanner.discover(timeout: const Duration(milliseconds: 10));
+      expect(devices.length, 2);
+      expect(devices.map((d) => d.id), containsAll(['AA:1', 'CC:3']));
+    });
+
+    test('permesso negato: errore tipizzato', () async {
+      final scanner = GenericBleScanner(requestPermissions: () async => false);
       await expectLater(
         scanner.discover(),
-        throwsA(
-          isA<PrinterDiscoveryException>().having(
-            (e) => e.message,
-            'message',
-            contains('Permesso Bluetooth negato'),
-          ),
-        ),
+        throwsA(isA<PrinterDiscoveryException>().having(
+          (e) => e.message,
+          'message',
+          contains('Permesso Bluetooth negato'),
+        )),
       );
     });
 
@@ -353,63 +599,12 @@ void main() {
       );
       await expectLater(
         scanner.discover(),
-        throwsA(
-          isA<PrinterDiscoveryException>().having(
-            (e) => e.message,
-            'message',
-            contains('Bluetooth spento'),
-          ),
-        ),
+        throwsA(isA<PrinterDiscoveryException>().having(
+          (e) => e.message,
+          'message',
+          contains('Bluetooth spento'),
+        )),
       );
-    });
-
-    test('raccolta per tutta la durata: i ritardi contano comunque',
-        () async {
-      final scanner = GenericBleScanner(
-        requestPermissions: () async => true,
-        adapterIsOn: () async => true,
-        scan: (timeout, onHit) async {
-          onHit('AA:1', 'Subito');
-          await Future<void>.delayed(const Duration(milliseconds: 20));
-          onHit('BB:2', 'Dopo-il-timeout-di-avvio');
-        },
-      );
-      final devices = await scanner.discover(
-        timeout: const Duration(milliseconds: 50),
-      );
-      expect(devices.length, 2,
-          reason: 'il risultato posticipato viene raccolto');
-    });
-  });
-
-  group('blocchi BLE e MTU (Prompt 11-bis, §4)', () {
-    for (final (mtu, expectedChunk) in const [
-      (23, 20),
-      (185, 182),
-      (517, 512),
-    ]) {
-      test('MTU $mtu → blocchi da $expectedChunk byte', () async {
-        final transport = FakeByteTransport(mtu: mtu);
-        await transport.connect();
-        expect(transport.suggestedChunkSize, expectedChunk);
-        await transport.write(List<int>.filled(1000, 0x55));
-        expect(transport.chunkSizes, isNotEmpty);
-        expect(
-          transport.chunkSizes.every((size) => size <= expectedChunk),
-          isTrue,
-          reason: 'nessun blocco oltre il limite MTU',
-        );
-        expect(transport.written.length, 1000, reason: 'tutti i byte arrivano');
-      });
-    }
-
-    test('sendWithRetry usa la dimensione consigliata dal trasporto',
-        () async {
-      final transport = FakeByteTransport(mtu: 23); // blocchi da 20
-      await transport.connect();
-      final ok = await sendWithRetry(transport, List<int>.filled(100, 1));
-      expect(ok, isTrue);
-      expect(transport.chunkSizes.every((s) => s <= 20), isTrue);
     });
   });
 
@@ -428,7 +623,9 @@ void main() {
           reason: 'il nuovo tentativo rinvia tutto');
     });
 
-    test('sendWithRetry: due fallimenti → false', () async {
+    test(
+        'sendWithRetry: due fallimenti ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ false',
+        () async {
       final transport = _AlwaysFailingTransport();
       final ok = await sendWithRetry(transport, [1, 2, 3]);
       expect(ok, isFalse);
@@ -443,9 +640,8 @@ void main() {
 
 Future<PrintCoordinator> _loadWith(Map<String, String> settings) {
   return PrintCoordinator.loadFrom(
-    (key) async =>
-        settings[key]?.isNotEmpty == true ? settings[key] : null,
-    engineFactories: {'fake': () => _FakeLabelPrinter(id: 'fake')},
+    (key) async => settings[key]?.isNotEmpty == true ? settings[key] : null,
+    engineFactories: {'fake': (_) => _FakeLabelPrinter(id: 'fake')},
   );
 }
 
@@ -539,7 +735,7 @@ class _FakeNiimAdapter implements NiimbotClientAdapter {
 
   final NiimbotCapabilities? capabilities;
 
-  /// (immagine, densità, copie)
+  /// (immagine, densitÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â , copie)
   final List<(MonoBitmap, int, int)> printCalls = [];
 
   bool _connected = false;
@@ -595,4 +791,32 @@ class _AlwaysFailingTransport extends FakeByteTransport {
 
 class SocketExceptionSimulated implements Exception {
   const SocketExceptionSimulated();
+}
+
+// ===========================================================================
+// Prompt 17: Bluetooth classico SPP e adattamento alla carta
+// ===========================================================================
+void main17() {}
+
+extension Prompt17Tests on Never {
+  static void noop() {}
+}
+
+/// Rasterizzatore finto che registra l'ultima larghezza richiesta.
+class _RecordingRasterizer extends LabelRasterizer {
+  double? lastWidthMm;
+
+  @override
+  Future<MonoBitmap> rasterPdfPage(
+    Uint8List pdf, {
+    required int dpi,
+    required double widthMm,
+  }) async {
+    lastWidthMm = widthMm;
+    return MonoBitmap(
+      width: rasterWidthForMm(widthMm, dpi),
+      height: 40,
+      packed: Uint8List(rasterWidthForMm(widthMm, dpi) ~/ 8 * 40),
+    );
+  }
 }

@@ -8,6 +8,7 @@ import '../../services/reminder_service.dart';
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../services/printing/print_label_flow.dart';
 import '../../services/sync_service.dart';
+import '../../widgets/exit_confirm_scope.dart';
 import '../lots_screen.dart' show PdfPreviewScreen;
 import 'onboarding_steps.dart';
 
@@ -22,6 +23,8 @@ class OnboardingScreen extends StatefulWidget {
     required this.reminders,
     required this.sync,
     required this.onFinished,
+    this.confirmExit = false,
+    this.onConfirmExit,
   });
 
   final HaccpRepository repository;
@@ -30,6 +33,16 @@ class OnboardingScreen extends StatefulWidget {
   final ReminderService reminders;
   final SyncService sync;
   final VoidCallback onFinished;
+
+  /// true quando il wizard è la schermata radice (primo avvio): il
+  /// tasto Indietro dal primo passo chiede conferma d'uscita e dai
+  /// passi successivi torna al passo precedente (Prompt 14, §3). Quando
+  /// il wizard è aperto via push da "Altro" resta false: Indietro
+  /// chiude la schermata normalmente.
+  final bool confirmExit;
+
+  /// Handler di uscita iniettabile per i test.
+  final Future<void> Function()? onConfirmExit;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -176,6 +189,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final theme = Theme.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
+    // Prompt 14, §3: wizard radice (primo avvio). Indietro dai passi
+    // successivi al primo torna al passo precedente; al primo passo,
+    // senza schermata sotto, chiede conferma d'uscita. Aperto via push
+    // (confirmExit = false) il tasto Indietro chiude la schermata.
+    final screen = _buildScreen(theme, wide);
+    if (!widget.confirmExit) return screen;
+    return ExitConfirmScope(
+      onBeforeConfirm: () {
+        if (controller.step > 0) {
+          _back();
+          return true;
+        }
+        return false;
+      },
+      onConfirmExit: widget.onConfirmExit,
+      child: screen,
+    );
+  }
+
+  Widget _buildScreen(ThemeData theme, bool wide) {
     // L'intera schermata (titolo, pagine e barra dei pulsanti) si ricostruisce
     // a ogni cambiamento del controller: il bottone "Avanti" dipende da
     // _canProceed, che cambia con la spunta dei termini e le scelte dei passi.
@@ -217,34 +250,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   children: [
                     SizedBox(
                       width: 300,
-                  child: _StepIndex(controller: controller),
-                ),
-                VerticalDivider(
-                    width: 1,
-                    color: theme.colorScheme.outlineVariant),
-                Expanded(child: content),
-              ],
-            )
-          : content,
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(
-                value:
-                    (controller.step + 1) / (OnboardingController.lastStep + 1),
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(3),
+                      child: _StepIndex(controller: controller),
+                    ),
+                    VerticalDivider(
+                        width: 1, color: theme.colorScheme.outlineVariant),
+                    Expanded(child: content),
+                  ],
+                )
+              : content,
+          bottomNavigationBar: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(
+                    value: (controller.step + 1) /
+                        (OnboardingController.lastStep + 1),
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildNavBar(context),
+                ],
               ),
-              const SizedBox(height: 12),
-              _buildNavBar(context),
-            ],
+            ),
           ),
-        ),
-      ),
         );
       },
     );
@@ -359,10 +391,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               9 => CloudStep(controller: controller, sync: widget.sync),
               10 => RemindersStep(
                   controller: controller,
-                  onRequestPermission:
-                      widget.reminders.requestPermission,
-                  onTestNotification:
-                      widget.reminders.showTestNotification,
+                  onRequestPermission: widget.reminders.requestPermission,
+                  onTestNotification: widget.reminders.showTestNotification,
                 ),
               11 => PrintingStep(
                   controller: controller,
@@ -446,8 +476,7 @@ class _StepIndex extends StatelessWidget {
                 child: Text(
                   _titles[index],
                   style: TextStyle(
-                    fontWeight:
-                        current ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: current ? FontWeight.w700 : FontWeight.w500,
                     color: current || done
                         ? theme.colorScheme.onSurface
                         : theme.colorScheme.onSurfaceVariant,

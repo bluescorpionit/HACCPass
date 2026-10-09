@@ -88,4 +88,24 @@ class TsplEncoder {
     out.add('PRINT ${copies.clamp(1, 999)},1\r\n'.codeUnits);
     return out.toBytes();
   }
+
+  /// "Prova solo testo" per TSPL: aiuta a distinguere il problema di
+  /// linguaggio/protocollo da quello di rasterizzazione immagine.
+  Uint8List plainTextTest({
+    required double widthMm,
+    required double heightMm,
+    int density = 3,
+  }) {
+    final out = BytesBuilder();
+    out.add(
+      header(
+        widthMm: widthMm,
+        heightMm: heightMm,
+        density: density,
+      ).codeUnits,
+    );
+    out.add('TEXT 16,16,"0",0,1,1,"HACCPass TSPL test"\r\n'.codeUnits);
+    out.add('PRINT 1,1\r\n'.codeUnits);
+    return out.toBytes();
+  }
 }

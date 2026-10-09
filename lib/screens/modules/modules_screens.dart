@@ -876,30 +876,24 @@ class WaterScreen extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _register(context, 'analisi'),
-                      icon: const Icon(Icons.science_outlined),
-                      label: const Text('Analisi'),
-                    ),
+              // Prompt 16, §3: tre azioni in riga → ActionButtonRow
+              // (testo su una riga, mai una lettera per riga).
+              ActionButtonRow(
+                actions: [
+                  ActionButtonData(
+                    icon: Icons.science_outlined,
+                    label: 'Analisi',
+                    onPressed: () => _register(context, 'analisi'),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _register(context, 'filtri'),
-                      icon: const Icon(Icons.plumbing_outlined),
-                      label: const Text('Filtri'),
-                    ),
+                  ActionButtonData(
+                    icon: Icons.plumbing_outlined,
+                    label: 'Filtri',
+                    onPressed: () => _register(context, 'filtri'),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _register(context, 'ghiaccio'),
-                      icon: const Icon(Icons.ac_unit_outlined),
-                      label: const Text('Ghiaccio'),
-                    ),
+                  ActionButtonData(
+                    icon: Icons.ac_unit_outlined,
+                    label: 'Ghiaccio',
+                    onPressed: () => _register(context, 'ghiaccio'),
                   ),
                 ],
               ),
