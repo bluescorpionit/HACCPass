@@ -347,13 +347,10 @@ class GenericLabelPrinter implements LabelPrinter {
         if (pa != pb) return pa ? -1 : 1;
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
-      final printerLike = [
-        for (final device in paired)
-          if (BluetoothSppByteTransport.looksLikePrinter(device.name)) device,
-      ];
-      final visible = printerLike.isNotEmpty ? printerLike : paired;
+      // Stampanti per prime ma TUTTI selezionabili (Prompt 17, §2):
+      // nessun filtro sull'elenco associato.
       return [
-        for (final device in visible)
+        for (final device in paired)
           PrinterDevice(
             name: device.name.isEmpty
                 ? 'Dispositivo ${device.address.substring(device.address.length - 5)}'

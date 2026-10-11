@@ -17,6 +17,7 @@ import 'license_screen.dart';
 import 'modules/extra_screens.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'printer_settings_screen.dart';
+import 'reminders_screen.dart';
 import 'sensors/sensor_diagnostics_screen.dart';
 import 'storage/attachment_storage_screen.dart';
 import 'staff/staff_screen.dart';
@@ -52,16 +53,16 @@ class MoreScreen extends StatelessWidget {
         'Ripeti o completa la configurazione iniziale',
         Icons.tune,
         () => _push(
-          context,
-          OnboardingScreen(
-            repository: repository,
-            license: license,
-            attachments: attachments,
-            reminders: reminders,
-            sync: sync,
-            onFinished: () {},
-          ),
-        ),
+              context,
+              OnboardingScreen(
+                repository: repository,
+                license: license,
+                attachments: attachments,
+                reminders: reminders,
+                sync: sync,
+                onFinished: () {},
+              ),
+            ),
       ),
       (
         'Anagrafica azienda',
@@ -80,8 +81,8 @@ class MoreScreen extends StatelessWidget {
         'Fornitori',
         'Registro fornitori e qualifica',
         Icons.local_shipping_outlined,
-        () => _push(context,
-            SuppliersScreen(repository: repository, license: license)),
+        () => _push(
+            context, SuppliersScreen(repository: repository, license: license)),
       ),
       (
         'Prodotti e allergeni',
@@ -108,16 +109,14 @@ class MoreScreen extends StatelessWidget {
         'Politica, comunicazioni, verifica annuale (Reg. UE 2021/382)',
         Icons.history_edu_outlined,
         () => _push(
-            context,
-            CultureScreen(repository: repository, license: license)),
+            context, CultureScreen(repository: repository, license: license)),
       ),
       (
         'Ridistribuzione alimenti',
         'Registro donazioni (facoltativo, Reg. UE 2021/382)',
         Icons.volunteer_activism_outlined,
         () => _push(
-            context,
-            DonationsScreen(repository: repository, license: license)),
+            context, DonationsScreen(repository: repository, license: license)),
       ),
       (
         'Guida HACCP',
@@ -130,14 +129,14 @@ class MoreScreen extends StatelessWidget {
         'Cloud, backup cifrato, ripristino e coda di caricamento',
         Icons.cloud_outlined,
         () => _push(
-          context,
-          CloudBackupScreen(
-            repository: repository,
-            backup: backup,
-            sync: sync,
-            license: license,
-          ),
-        ),
+              context,
+              CloudBackupScreen(
+                repository: repository,
+                backup: backup,
+                sync: sync,
+                license: license,
+              ),
+            ),
       ),
       (
         'Licenza',
@@ -152,9 +151,19 @@ class MoreScreen extends StatelessWidget {
         'Brother QL, Niimbot, generica o stampa di sistema; prova e formati',
         Icons.print_outlined,
         () => _push(
-          context,
-          PrinterSettingsScreen(repository: repository),
-        ),
+              context,
+              PrinterSettingsScreen(repository: repository),
+            ),
+      ),
+      // Prompt 18: orari e diagnostica dei promemoria.
+      (
+        'Promemoria',
+        'Orari, permessi, allarmi precisi e prova delle notifiche',
+        Icons.notifications_outlined,
+        () => _push(
+              context,
+              RemindersScreen(repository: repository, reminders: reminders),
+            ),
       ),
       // Prompt 11-bis, §6: link legali da un'unica costante (AppLinks).
       (
@@ -175,13 +184,13 @@ class MoreScreen extends StatelessWidget {
         'Foto, PDF, spazio usato e "Libera spazio"',
         Icons.photo_library_outlined,
         () => _push(
-          context,
-          AttachmentStorageScreen(
-            repository: repository,
-            attachments: AttachmentService(repository: repository),
-            cloud: sync.cloud,
-          ),
-        ),
+              context,
+              AttachmentStorageScreen(
+                repository: repository,
+                attachments: AttachmentService(repository: repository),
+                cloud: sync.cloud,
+              ),
+            ),
       ),
       // FASE 0 sensori Govee: voce visibile SOLO nelle build di debug.
       if (kDebugMode)
@@ -268,8 +277,7 @@ class MoreScreen extends StatelessWidget {
   }
 
   void _push(BuildContext context, Widget screen) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => screen));
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
   /// Conferma l'azzeramento di prova e licenza (solo build debug).

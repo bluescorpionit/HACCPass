@@ -177,10 +177,16 @@ class HaccpassApp extends StatelessWidget {
       home: FutureBuilder<AppServices>(
         future: _waitForBoot(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return _BootErrorScreen(error: snapshot.error);
+          }
           if (snapshot.connectionState != ConnectionState.done) {
             return const _InAppSplash();
           }
-          final loaded = snapshot.data!;
+          final loaded = snapshot.data;
+          if (loaded == null) {
+            return const _BootErrorScreen();
+          }
           return _Root(
             repository: loaded.repository,
             license: loaded.license,
@@ -200,6 +206,62 @@ class HaccpassApp extends StatelessWidget {
     // oltre il tempo di caricamento reale.
     await minimumSplash;
     return loaded;
+  }
+}
+
+class _BootErrorScreen extends StatelessWidget {
+  const _BootErrorScreen({this.error});
+
+  final Object? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Impossibile avviare HACCPass',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Riavvia l\'app. Se il problema continua, aggiorna '
+                  'all\'ultima versione disponibile.',
+                  style: theme.textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 16),
+                  SelectableText(
+                    error.toString(),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -234,8 +296,7 @@ class _InAppSplashState extends State<_InAppSplash>
 
   @override
   Widget build(BuildContext context) {
-    final animationsDisabled =
-        MediaQuery.disableAnimationsOf(context);
+    final animationsDisabled = MediaQuery.disableAnimationsOf(context);
     final theme = Theme.of(context);
 
     final logo = Image.asset(
@@ -336,8 +397,7 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     // Allegati (Prompt 8): pulizia in background dei temporanei abbandonati
     // (registrazioni mai completate) più vecchi di 24 ore.
     unawaited(
-      AttachmentService(repository: widget.repository)
-          .cleanupStalePending(),
+      AttachmentService(repository: widget.repository).cleanupStalePending(),
     );
     _bootstrap();
   }
@@ -372,11 +432,14 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
   }
 
   /// Al ritorno in primo piano: svuota la coda di caricamento cloud,
-  /// aggiorna l'ancora della prova (lastSeen / rilevamento orologio) e
-  /// valuta il backup automatico giornaliero.
+  /// aggiorna l'ancora della prova (lastSeen / rilevamento orologio),
+  /// valuta il backup automatico giornaliero e RIPROGRAMMA i promemoria
+  /// (Prompt 18, §2: copre permesso concesso in seguito, cambio orari
+  /// e passaggio all'ora legale/solare).
   Future<void> _onAppResumed() async {
     unawaited(widget.license.onAppResumed());
     await widget.sync.processQueue();
+    unawaited(widget.reminders.rescheduleAll());
     await _maybeDailyBackup();
   }
 

@@ -2,6 +2,16 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Permessi chiesti e spiegati al momento dell'uso, mai all'avvio. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Promemoria (Prompt 18): ricreazione degli allarmi dopo il
+         riavvio del telefono e l'aggiornamento dell'app. Il plugin
+         flutter_local_notifications 22.x NON li dichiara più nel proprio
+         manifest: vanno nell'app. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Allarmi ESATTI (Android 12+): dichiarazione necessaria per
+         poterli richiedere dalla schermata Promemoria. NON usare
+         USE_EXACT_ALARM: riservato ad app sveglia/calendario e Play lo
+         verifica. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <!-- Sensori Govee H5179 e stampanti etichette (Prompt 11) via BLE:
@@ -68,6 +78,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Promemoria (Prompt 18): receiver del plugin
+             flutter_local_notifications 22.x — da v19 NON sono più nel
+             manifest del plugin e vanno dichiarati dall'app, altrimenti
+             gli allarmi programmati NON scattano e NON si ricreano dopo
+             il riavvio del telefono o l'aggiornamento. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
