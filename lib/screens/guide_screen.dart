@@ -91,10 +91,16 @@ class GuideScreen extends StatelessWidget {
                   'precompilata dalla durata del prodotto e allergeni ereditati.',
               'Collega gli ingredienti alle consegne ricevute: dal lotto del '
                   'fornitore trovi subito i lotti da ritirare (Reg. CE 178/2002).',
-              'Conservazione della documentazione: freschi 3 mesi; "da '
-                  'consumarsi entro" 6 mesi dopo la scadenza; "preferibilmente '
-                  'entro" 12 mesi; altri 2 anni. Nessun dato viene cancellato '
-                  'automaticamente.',
+              'Tre stati: attivo, terminato (consumato o venduto del tutto, '
+                  'un tocco) e ritirato/smaltito (con data, motivo e nota). '
+                  'La registrazione non si cancella mai: i chiusi finiscono '
+                  'nell\u2019archivio e restano sempre riattivabili.',
+              'I lotti terminati e ritirati restano nel registro per la '
+                  'rintracciabilit\u00E0. Per quanto tempo conservarli dipende '
+                  'dal tipo di prodotto e dalle indicazioni '
+                  'dell\u2019autorit\u00E0 sanitaria: verifica con il tuo '
+                  'consulente HACCP o con l\u2019ASL. Nessun dato viene '
+                  'cancellato automaticamente.',
             ],
           ),
           _GuideSection(

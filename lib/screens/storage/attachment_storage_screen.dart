@@ -384,10 +384,16 @@ class _AttachmentStorageScreenState extends State<AttachmentStorageScreen> {
     );
     if (months == null || !mounted) return;
 
-    // Mai toccare allegati di NC aperte o lotti non scaduti.
+    // Mai toccare allegati di NC aperte o di lotti NON chiusi (attivi,
+    // Prompt 19, §7). Gli allegati dei lotti chiusi si ripuliscono solo
+    // con questa conferma esplicita.
     final openNcIds = (await widget.repository.getNonConformities())
         .where((nc) => nc.isOpen)
         .map((nc) => nc.id)
+        .toSet();
+    final activeLotIds = (await widget.repository.getLots())
+        .where((l) => l.isActive)
+        .map((l) => l.id)
         .toSet();
     if (!mounted) return;
 
@@ -416,7 +422,8 @@ class _AttachmentStorageScreenState extends State<AttachmentStorageScreen> {
 
     final freed = await widget.attachments.offloadOldAttachments(
       olderThan: Duration(days: 30 * months),
-      protectedEntityIds: openNcIds,
+      protectedNcEntityIds: openNcIds,
+      protectedLotEntityIds: activeLotIds,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

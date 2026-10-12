@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/format.dart';
 import '../../models/haccp_models.dart';
 import '../../repositories/haccp_repository.dart';
@@ -97,10 +98,19 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
                     ],
                     if (data.lots.isNotEmpty) ...[
                       const SectionTitle('Lotti prodotti trovati (a valle)'),
+                      // Prompt 19, §5: la tracciabilità include SEMPRE
+                      // anche i lotti chiusi, con lo stato visibile.
                       for (final lot in data.lots)
                         Card(
                           child: ListTile(
-                            leading: const Icon(Icons.inventory_2_outlined),
+                            leading: Icon(
+                              lot.isWithdrawn
+                                  ? Icons.warning_amber_outlined
+                                  : Icons.inventory_2_outlined,
+                              color: lot.isWithdrawn
+                                  ? context.haccpColors.danger
+                                  : null,
+                            ),
                             title: Text(
                               '${lot.productName} \u2022 ${lot.code}',
                               style: const TextStyle(
@@ -108,7 +118,8 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
                             ),
                             subtitle: Text(
                               'Prodotto il ${fmtDate(lot.producedAt)}'
-                              '${lot.expiresAt != null ? ' \u2022 entro ${fmtDate(lot.expiresAt!)}' : ''}',
+                              '${lot.expiresAt != null ? ' \u2022 entro ${fmtDate(lot.expiresAt!)}' : ''}'
+                              '${lot.isClosed ? ' \u2022 ${_closedStatusLabel(lot)}' : ''}',
                             ),
                           ),
                         ),
@@ -126,6 +137,7 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
     final lots = await widget.repository.getLotsUsingReceipt(receipt.id);
     final lotCounts = await widget.repository.getAttachmentCounts('lot');
     if (!context.mounted) return;
+    final colors = context.haccpColors;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -177,10 +189,17 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
               for (final lot in lots)
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.inventory_2_outlined),
+                    leading: Icon(
+                      lot.isWithdrawn
+                          ? Icons.warning_amber_outlined
+                          : Icons.inventory_2_outlined,
+                      color:
+                          lot.isWithdrawn ? colors.danger : null,
+                    ),
                     title: Text('${lot.productName} \u2022 ${lot.code}'),
                     subtitle: Text(
-                        'Prodotto il ${fmtDate(lot.producedAt)} \u2022 ${lot.operatorName}'),
+                        'Prodotto il ${fmtDate(lot.producedAt)} \u2022 ${lot.operatorName}'
+                        '${lot.isClosed ? ' \u2022 ${_closedStatusLabel(lot)}' : ''}'),
                     trailing: lotCounts[lot.id] != null
                         ? Badge(
                             label: Text('${lotCounts[lot.id]}'),
@@ -201,4 +220,15 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
       },
     );
   }
+}
+
+/// "Terminato il gg/mm/aaaa" / "Ritirato il gg/mm/aaaa (motivo)".
+String _closedStatusLabel(ProductionLot lot) {
+  final when =
+      lot.closedAt == null ? '' : ' il ${fmtDate(lot.closedAt!)}';
+  if (lot.isFinished) return 'Terminato$when';
+  final reason = lot.withdrawnReason == null
+      ? ''
+      : ' (${LotWithdrawalReason.label(lot.withdrawnReason!)})';
+  return 'Ritirato$when$reason';
 }

@@ -754,6 +754,58 @@ class LotIngredient {
       };
 }
 
+/// Stato del ciclo di vita di un lotto. La registrazione NON si cancella
+/// mai: "Terminato" e "Ritirato" chiudono il lotto ma la riga resta nel
+/// registro per la rintracciabilità e per il dossier.
+class LotStatus {
+  const LotStatus._();
+
+  /// In uso (valore storico di tutti i lotti prima della v8).
+  static const String active = 'active';
+
+  /// Consumato o venduto del tutto: fine normale, nessun motivo richiesto.
+  static const String finished = 'finished';
+
+  /// Tolto dall'uso (scaduto, alterato, richiamato, altro): serve motivo.
+  static const String withdrawn = 'withdrawn';
+
+  static const List<String> values = [active, finished, withdrawn];
+
+  static bool isValid(String? value) => values.contains(value);
+
+  static String label(String value) => switch (value) {
+        finished => 'Terminato',
+        withdrawn => 'Ritirato',
+        _ => 'Attivo',
+      };
+}
+
+/// Motivo del ritiro di un lotto (solo per `withdrawn`).
+class LotWithdrawalReason {
+  const LotWithdrawalReason._();
+
+  /// Scaduto.
+  static const String expired = 'expired';
+
+  /// Alterato o danneggiato.
+  static const String damaged = 'damaged';
+
+  /// Richiamo del fornitore.
+  static const String recall = 'recall';
+
+  /// Altro (nota obbligatoria).
+  static const String other = 'other';
+
+  static const List<String> values = [expired, damaged, recall, other];
+
+  static String label(String value) => switch (value) {
+        expired => 'Scaduto',
+        damaged => 'Alterato/danneggiato',
+        recall => 'Richiamo',
+        _ => 'Altro',
+      };
+}
+
 class ProductionLot {
   const ProductionLot({
     required this.id,
@@ -769,8 +821,13 @@ class ProductionLot {
     this.notes,
     this.allergenCodes = const [],
     this.ingredients = const [],
+    this.status = LotStatus.active,
+    this.closedAt,
+    this.withdrawnReason,
+    this.closingNote,
+    this.withdrawnQuantity,
+    this.closedBy,
   });
-
   final int id;
   final String code;
   final String productName;
@@ -784,6 +841,60 @@ class ProductionLot {
   final String? notes;
   final List<String> allergenCodes;
   final List<LotIngredient> ingredients;
+
+  /// Stato del lotto: active | finished | withdrawn. Tutti i lotti
+  /// creati prima della migrazione v8 restano `active`.
+  final String status;
+
+  /// Data/ora di chiusura (per finished e withdrawn).
+  final DateTime? closedAt;
+
+  /// Motivo del ritiro: expired | damaged | recall | other.
+  final String? withdrawnReason;
+
+  /// Nota libera di chiusura (per entrambi gli stati) e storico delle
+  /// eventuali riattivazioni.
+  final String? closingNote;
+
+  /// Quantità smaltita, opzionale, solo per withdrawn (testo libero:
+  /// "3 kg", "2 pz", ...).
+  final String? withdrawnQuantity;
+
+  /// Operatore che ha chiuso il lotto, se noto.
+  final String? closedBy;
+
+  bool get isActive => status == LotStatus.active;
+  bool get isFinished => status == LotStatus.finished;
+  bool get isWithdrawn => status == LotStatus.withdrawn;
+  bool get isClosed => isFinished || isWithdrawn;
+
+  /// Scadenza passata, calcolata a fine giornata della data di scadenza:
+  /// un lotto che scade oggi NON è scaduto fino alle 23:59 locali.
+  /// Vale solo per i lotti attivi: un lotto chiuso non è mai "scaduto"
+  /// ai fini degli avvisi.
+  bool get isExpired {
+    if (!isActive) return false;
+    final end = _expiryEndOfDay();
+    return end != null && end.isBefore(DateTime.now());
+  }
+
+  /// Scadenza entro 7 giorni (solo lotti attivi, non già scaduti).
+  bool get isExpiringSoon {
+    if (!isActive) return false;
+    if (isExpired) return false;
+    final end = _expiryEndOfDay();
+    return end != null &&
+        end.isBefore(DateTime.now().add(const Duration(days: 7)));
+  }
+
+  DateTime? _expiryEndOfDay() {
+    final e = expiresAt;
+    if (e == null) return null;
+    return DateTime(e.year, e.month, e.day, 23, 59, 59, 999);
+  }
+
+  /// Etichetta compatta dello stato per elenchi e tracciabilità.
+  String get statusLabel => LotStatus.label(status);
 
   factory ProductionLot.fromMap(
     Map<String, Object?> map, [
@@ -803,6 +914,15 @@ class ProductionLot {
         notes: map.strOrNull('notes'),
         allergenCodes: parseAllergenCodes(map.strOrNull('allergens')),
         ingredients: ingredients,
+        // Valori assenti o sconosciuti (backup vecchi) => 'active'.
+        status: LotStatus.isValid(map.str('status'))
+            ? map.str('status')
+            : LotStatus.active,
+        closedAt: map.dt('closed_at'),
+        withdrawnReason: map.strOrNull('withdrawn_reason'),
+        closingNote: map.strOrNull('closing_note'),
+        withdrawnQuantity: map.strOrNull('withdrawn_quantity'),
+        closedBy: map.strOrNull('closed_by'),
       );
 
   Map<String, Object?> toMap() => {
@@ -817,6 +937,12 @@ class ProductionLot {
         'operator_name': operatorName,
         'notes': notes,
         'allergens': allergenCodesToCsv(allergenCodes),
+        'status': status,
+        'closed_at': closedAt?.toIso8601String(),
+        'withdrawn_reason': withdrawnReason,
+        'closing_note': closingNote,
+        'withdrawn_quantity': withdrawnQuantity,
+        'closed_by': closedBy,
       };
 }
 

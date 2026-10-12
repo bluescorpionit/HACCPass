@@ -880,6 +880,122 @@ class HaccpRepository {
     });
   }
 
+  /// Chiude un lotto come "terminato" (consumato/venduto del tutto):
+  /// un solo tocco, nessun motivo richiesto. La riga resta nel registro.
+  Future<void> finishLot(int id, {String? note, String? operatorName}) async {
+    await _write(() async {
+      await _db.update(
+        'lots',
+        {
+          'status': LotStatus.finished,
+          'closed_at': DateTime.now().toIso8601String(),
+          'withdrawn_reason': null,
+          'withdrawn_quantity': null,
+          'closing_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+          'closed_by': (operatorName == null || operatorName.trim().isEmpty)
+              ? null
+              : operatorName.trim(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  /// Chiude un lotto come "ritirato/smaltito": serve motivo, data e
+  /// (solo per "altro") una nota. La riga resta nel registro.
+  Future<void> withdrawLot({
+    required int id,
+    required String reason,
+    DateTime? closedAt,
+    String? note,
+    String? quantity,
+    String? operatorName,
+  }) async {
+    assert(LotWithdrawalReason.values.contains(reason));
+    assert(reason != LotWithdrawalReason.other ||
+        (note != null && note.trim().isNotEmpty));
+    await _write(() async {
+      await _db.update(
+        'lots',
+        {
+          'status': LotStatus.withdrawn,
+          'closed_at': (closedAt ?? DateTime.now()).toIso8601String(),
+          'withdrawn_reason': reason,
+          'withdrawn_quantity':
+              (quantity == null || quantity.trim().isEmpty)
+                  ? null
+                  : quantity.trim(),
+          'closing_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+          'closed_by': (operatorName == null || operatorName.trim().isEmpty)
+              ? null
+              : operatorName.trim(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  /// Riporta un lotto chiuso a `active` (correzione errore). La data di
+  /// riattivazione viene annotata nella nota di chiusura: lo storico
+  /// della chiusura non si perde. [annotate] è false per l'annullo
+  /// immediato ("Annulla" nella snackbar dopo "Segna come terminato").
+  Future<void> reopenLot(int id,
+      {bool annotate = true, String? operatorName}) async {
+    await _write(() async {
+      String? note;
+      if (annotate) {
+        final rows = await _db.query('lots',
+            where: 'id = ?', whereArgs: [id], limit: 1);
+        final previous = rows.isEmpty ? null : rows.first['closing_note'] as String?;
+        final who = operatorName?.trim() ?? '';
+        final stamp = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+        note = [
+          if (previous != null && previous.trim().isNotEmpty) previous.trim(),
+          'Riattivato il $stamp${who.isEmpty ? '' : ' ($who)'}',
+        ].join(' • ');
+      }
+      await _db.update(
+        'lots',
+        {
+          'status': LotStatus.active,
+          'closed_at': null,
+          'withdrawn_reason': null,
+          'withdrawn_quantity': null,
+          if (annotate) 'closing_note': note,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  /// Appende una nota alla chiusura di un lotto (azione "Aggiungi nota"
+  /// su un lotto chiuso).
+  Future<void> appendLotClosingNote(int id, String note) async {
+    final clean = note.trim();
+    if (clean.isEmpty) return;
+    await _write(() async {
+      final rows = await _db.query('lots',
+          where: 'id = ?', whereArgs: [id], limit: 1);
+      final previous =
+          rows.isEmpty ? null : rows.first['closing_note'] as String?;
+      await _db.update(
+        'lots',
+        {
+          'closing_note': [
+            if (previous != null && previous.trim().isNotEmpty)
+              previous.trim(),
+            clean,
+          ].join(' • '),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
   Future<List<ProductionLot>> getLots({DateTime? from, DateTime? to}) async {
     final where = <String>[];
     final args = <Object?>[];
@@ -1388,29 +1504,46 @@ class HaccpRepository {
       ));
     }
 
-    // Danger: lotti gi\u00E0 scaduti. Warning: in scadenza entro 7 giorni.
+    // Danger: lotti ATTIVI gi\u00E0 scaduti (i lotti chiusi non producono
+    // alcun avviso: la registrazione resta ma "Oggi" torna libera).
+    // Warning: attivi in scadenza entro 7 giorni.
+    // Oltre 3 scaduti: un solo avviso riepilogativo (Prompt 19, §4).
     final now = DateTime.now();
     final lotsAll = await getLots();
-    for (final lot in lotsAll) {
-      final expiry = lot.expiresAt;
-      if (expiry == null) continue;
-      if (expiry.isBefore(now)) {
+    final expiredActive =
+        lotsAll.where((l) => l.isExpired).toList()
+          ..sort((a, b) => a.expiresAt!
+              .compareTo(b.expiresAt!));
+    if (expiredActive.length > 3) {
+      todos.add(TodoItem(
+        severity: 0,
+        icon: 'lot',
+        title: '${expiredActive.length} lotti scaduti da gestire',
+        subtitle: 'Ritirali dall\u2019uso o segnali come terminati',
+        target: 'lots:expired',
+      ));
+    } else {
+      for (final lot in expiredActive) {
         todos.add(TodoItem(
           severity: 0,
           icon: 'lot',
           title: 'Lotto scaduto: ${lot.productName} (${lot.code})',
-          subtitle: 'Scaduto il ${fmtDate(expiry)}: ritirare ed eliminare',
-          target: 'lots',
-        ));
-      } else if (expiry.isBefore(now.add(const Duration(days: 7)))) {
-        todos.add(TodoItem(
-          severity: 1,
-          icon: 'lot',
-          title: 'Lotto in scadenza: ${lot.productName} (${lot.code})',
-          subtitle: 'Entro il ${fmtDate(expiry)}',
-          target: 'lots',
+          subtitle:
+              'Scaduto il ${fmtDate(lot.expiresAt!)}: ritirare dall\u2019uso e '
+              'registrarlo (o segnarlo come terminato)',
+          target: 'lots:expired',
         ));
       }
+    }
+    for (final lot in lotsAll) {
+      if (!lot.isExpiringSoon) continue;
+      todos.add(TodoItem(
+        severity: 1,
+        icon: 'lot',
+        title: 'Lotto in scadenza: ${lot.productName} (${lot.code})',
+        subtitle: 'Entro il ${fmtDate(lot.expiresAt!)}',
+        target: 'lots',
+      ));
     }
 
     // Warning: monitoraggio infestanti gi\u00E0 oltre i 30 giorni.

@@ -419,9 +419,30 @@ class _RootState extends State<_Root> with WidgetsBindingObserver {
     if (mounted) setState(() {});
     await _onAppResumed();
 
+    // Prompt 19, §0: migrazione non riuscita → messaggio chiaro con
+    // invito al backup; l'app continua a funzionare con i dati intatti.
+    _warnIfMigrationFailed();
+
     // Promemoria: ricalcolati a ogni avvio (timezone e orari possono
     // cambiare).
     await widget.reminders.rescheduleAll();
+  }
+
+  void _warnIfMigrationFailed() {
+    final error = widget.repository.database.migrationError;
+    if (error == null || !mounted) return;
+    rootMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 10),
+        backgroundColor: Theme.of(context).colorScheme.errorContainer,
+        content: Text(
+          error,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onErrorContainer,
+          ),
+        ),
+      ),
+    );
   }
 
   @override

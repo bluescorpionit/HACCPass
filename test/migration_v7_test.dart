@@ -92,7 +92,8 @@ void main() {
     final migrated = AppDatabase(path: path);
     await migrated.initialize();
     final db = migrated.db;
-    expect(await db.getVersion(), 7);
+    // La migrazione sale fino alla versione corrente (v8: stati lotto).
+    expect(await db.getVersion(), appDatabaseVersion);
     addTearDown(migrated.close);
 
     final columns =
@@ -232,6 +233,6 @@ void main() {
     addTearDown(handle.dispose);
     expect(handle.schemaVersion, appDatabaseVersion,
         reason: 'manifest aggiornato alla versione schema corrente');
-    expect(appDatabaseVersion, 7);
+    expect(appDatabaseVersion, 8);
   });
 }

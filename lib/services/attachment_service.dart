@@ -608,11 +608,14 @@ class AttachmentService {
   /// "Libera spazio": elimina il file locale degli allegati pi\u00F9 vecchi
   /// di [olderThan] GI\u00C0 verificati sul cloud (cloud_id E synced_at),
   /// mantenendo record, miniatura e riferimento. Non tocca mai file non
-  /// caricati, caricamenti falliti, allegati di NC aperte o di lotti non
-  /// ancora scaduti. Restituisce i byte liberati.
+  /// caricati, caricamenti falliti, allegati di NC aperte o di lotti
+  /// ATTIVI (Prompt 19, §7: gli allegati dei lotti chiusi si ripuliscono
+  /// solo perch\u00E9 l'utente ha confermato esplicitamente). Restituisce
+  /// i byte liberati.
   Future<int> offloadOldAttachments({
     required Duration olderThan,
-    required Set<int> protectedEntityIds,
+    required Set<int> protectedNcEntityIds,
+    Set<int> protectedLotEntityIds = const {},
   }) async {
     final all = await repository.getAllAttachments();
     var freed = 0;
@@ -621,7 +624,9 @@ class AttachmentService {
       if (a.isOffloaded) continue;
       if (a.cloudId == null || a.syncedAt == null) continue;
       if (a.createdAt.isAfter(cutoff)) continue;
-      if (protectedEntityIds.contains(a.id)) continue;
+      if (_isProtected(a, protectedNcEntityIds, protectedLotEntityIds)) {
+        continue;
+      }
       final file = File(a.localPath);
       if (!await file.exists()) continue;
       // Il file \u00E8 condiviso da pi\u00F9 record: liberabile solo se TUTTI
@@ -632,7 +637,9 @@ class AttachmentService {
           s.isOffloaded ||
           (s.cloudId != null &&
               s.syncedAt != null &&
-              !s.createdAt.isAfter(cutoff)));
+              !s.createdAt.isAfter(cutoff) &&
+              !_isProtected(
+                  s, protectedNcEntityIds, protectedLotEntityIds)));
       if (!allEligible) continue;
       final size = a.size;
       await file.delete();
@@ -640,6 +647,23 @@ class AttachmentService {
       freed += size;
     }
     return freed;
+  }
+
+  bool _isProtected(
+    Attachment a,
+    Set<int> protectedNcEntityIds,
+    Set<int> protectedLotEntityIds,
+  ) {
+    if (a.entityType == 'nonconformity' &&
+        protectedNcEntityIds.contains(a.entityId)) {
+      return true;
+    }
+    // Prompt 19, §7: mai gli allegati di lotti non scaduti/chiusi
+    // (cioè attivi).
+    if (a.entityType == 'lot' && protectedLotEntityIds.contains(a.entityId)) {
+      return true;
+    }
+    return false;
   }
 
   /// Riporta un allegato "solo su Drive" allo stato locale dopo il

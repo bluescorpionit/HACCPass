@@ -107,7 +107,7 @@ void main() {
     final migrated = AppDatabase(path: path);
     await migrated.initialize();
     final db = migrated.db;
-    expect(await db.getVersion(), 7);
+    expect(await db.getVersion(), appDatabaseVersion);
 
     for (final column in [
       'sha256', 'thumb_path', 'width', 'height', 'offloaded_at',
@@ -207,7 +207,7 @@ void main() {
 
     final freed = await attachments.offloadOldAttachments(
       olderThan: const Duration(days: 300),
-      protectedEntityIds: const {},
+      protectedNcEntityIds: const {},
     );
 
     expect(freed, greaterThan(0), reason: 'il vecchio sincronizzato si libera');
@@ -261,7 +261,7 @@ void main() {
     // Il manifest riporta la versione REALE dello schema e gli allegati.
     final bytes = await File(path!).readAsBytes();
     final zip = await backup.readBackup(path);
-    expect(zip.schemaVersion, 7);
+    expect(zip.schemaVersion, appDatabaseVersion);
     final manifestText = String.fromCharCodes(
       bytes.sublist(0, bytes.length).where((_) => true),
     );

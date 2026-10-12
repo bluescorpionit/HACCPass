@@ -16,7 +16,12 @@ import 'package:sqflite/sqflite.dart';
 /// in coda al record `attachments` corrispondente: dopo l'upload
 /// `cloud_id`/`synced_at` vengono scritti sull'allegato, così dopo un
 /// ripristino si sa quale file remoto riscaricare.
-const int appDatabaseVersion = 7;
+///
+/// V8 (stati del lotto): colonne `status`/`closed_at`/`withdrawn_reason`/
+/// `closing_note`/`withdrawn_quantity`/`closed_by` su `lots`. Migrazione
+/// PURAMENTE ADDITIVA: nessun dato esistente viene toccato, tutti i
+/// lotti restano `active`.
+const int appDatabaseVersion = 8;
 
 class AppDatabase {
   /// [path] \u00E8 usato nei test per puntare a un file dedicato.
@@ -56,13 +61,158 @@ class AppDatabase {
         join(await getDatabasesPath(), 'blue_haccp.db');
     _path = path;
 
-    _db = await openDatabase(
-      path,
-      version: 7,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-      onOpen: _onOpen,
-    );
+    // Prima di migrare: copia di sicurezza del database nella cartella
+    // privata dell'app (Prompt 19, §0). Se la migrazione fallisse, il
+    // file resta disponibile per il ripristino manuale.
+    final existingVersion = await _detectVersion(path);
+    final upgradePending =
+        existingVersion > 0 && existingVersion < appDatabaseVersion;
+    String? safetyBackupPath;
+    if (upgradePending) {
+      safetyBackupPath = await _createPreMigrationBackup(path);
+    }
+
+    try {
+      _db = await openDatabase(
+        path,
+        version: appDatabaseVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+        onOpen: _onOpen,
+      );
+      migrationFailed = false;
+      if (upgradePending) {
+        await _markSuccessfulStartup(path);
+      }
+    } catch (error) {
+      // La migrazione è fallita: sqflite chiude il database e la
+      // transazione di ALTER è annullata, quindi il file resta alla
+      // versione precedente e integro. L'app NON va in crash: si
+      // riapre il database alla versione esistente (le nuove colonne
+      // mancano ma il codice le tratta come assenti => lotti active).
+      migrationFailed = true;
+      migrationError =
+          'Aggiornamento del database non riuscito ($error). '
+          'I dati sono al sicuro${safetyBackupPath == null ? '' : ' (copia di sicurezza: ${basename(safetyBackupPath)})'}: '
+          'fai un backup e riprova dopo aver liberato spazio o '
+          'aggiornato l\u2019app.';
+      if (existingVersion > 0) {
+        _db = await openDatabase(
+          path,
+          version: existingVersion,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+          onOpen: _onOpen,
+        );
+        // La migrazione può essere fallita per una condizione transitoria
+        // (spazio disco, lock): si ritenta subito in forma additiva e
+        // idempotente. Se riesce il database torna alla versione corrente.
+        try {
+          await _createV8Tables(_db!);
+          await _db!.execute('PRAGMA user_version = $appDatabaseVersion');
+          migrationFailed = false;
+          migrationError = null;
+        } catch (_) {
+          // Resta lo schema precedente: l'app funziona, le azioni di
+          // chiusura lotto restano disabitate finché l'aggiornamento
+          // non va a buon fine (repository le nega con messaggio chiaro).
+        }
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  /// true se l'ultima apertura ha saltato la migrazione (il database
+  /// funziona con lo schema precedente: le nuove colonne mancano).
+  bool migrationFailed = false;
+
+  /// Messaggio mostrabile all'utente quando [migrationFailed].
+  String? migrationError;
+
+  /// Avvisi non bloccanti della procedura di aggiornamento.
+  final List<String> migrationWarnings = [];
+
+  /// Versione `user_version` del file database (0 se assente o non
+  /// leggibile). Lettura in sola lettura: nessuna scrittura.
+  Future<int> _detectVersion(String path) async {
+    final file = File(path);
+    if (!await file.exists()) return 0;
+    try {
+      final db = await openDatabase(path, readOnly: true, singleInstance: false);
+      try {
+        return await db.getVersion();
+      } finally {
+        await db.close();
+      }
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Copia `blue_haccp.db` in `blue_haccp.db.pre_v<N>.bak` prima di
+  /// applicare la migrazione. Conserva al massimo le ultime due copie,
+  /// NON entra nei backup Drive (il backup zippa solo `blue_haccp.db`)
+  /// e viene rimossa dopo alcuni avvii riusciti
+  /// (vedi [_markSuccessfulStartup]).
+  Future<String?> _createPreMigrationBackup(String path) async {
+    final suffix = RegExp(r'\.pre_v(\d+)\.bak$');
+    try {
+      final dir = File(path).parent;
+      final existing = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => suffix.hasMatch(basename(f.path)))
+          .toList()
+        ..sort((a, b) => a.lastModifiedSync().compareTo(
+            b.lastModifiedSync()));
+      while (existing.length >= 2) {
+        final oldest = existing.removeAt(0);
+        try {
+          oldest.deleteSync();
+        } catch (_) {
+          // Best effort: una copia in più non è un problema.
+        }
+      }
+      final backupPath = '$path.pre_v$appDatabaseVersion.bak';
+      await File(path).copy(backupPath);
+      return backupPath;
+    } catch (e) {
+      // Manca spazio o errore I/O: la migrazione è puramente additiva,
+      // si procede comunque registrando l'avviso.
+      migrationWarnings.add(
+          'Copia di sicurezza pre-migrazione non creata: $e');
+      return null;
+    }
+  }
+
+  /// Dopo alcuni avvii riuscati con lo schema corrente rimuove le
+  /// copie di sicurezza pre-migrazione ormai inutili.
+  Future<void> _markSuccessfulStartup(String path) async {
+    try {
+      final marker = File('$path.ok_starts');
+      var count = 0;
+      if (await marker.exists()) {
+        count = int.tryParse(await marker.readAsString()) ?? 0;
+      }
+      count++;
+      await marker.writeAsString('$count', flush: true);
+      if (count < 3) return;
+      final suffix = RegExp(r'\.pre_v(\d+)\.bak$');
+      final dir = File(path).parent;
+      for (final f in dir.listSync().whereType<File>()) {
+        if (suffix.hasMatch(basename(f.path))) {
+          try {
+            f.deleteSync();
+          } catch (_) {}
+        }
+      }
+      try {
+        await marker.delete();
+      } catch (_) {}
+    } catch (_) {
+      // Best effort: la pulizia riprova al prossimo avvio.
+    }
   }
 
   void _configureDatabaseFactoryIfNeeded() {
@@ -106,6 +256,7 @@ class AppDatabase {
     await _createV5Tables(database);
     await _createV6Tables(database);
     await _createV7Tables(database);
+    await _createV8Tables(database);
     await _seed(database);
     await _insertV4Defaults(database);
   }
@@ -128,6 +279,9 @@ class AppDatabase {
     }
     if (oldVersion < 7) {
       await _migrateV6toV7(database);
+    }
+    if (oldVersion < 8) {
+      await _migrateV7toV8(database);
     }
   }
 
@@ -260,6 +414,35 @@ class AppDatabase {
 
   Future<void> _migrateV6toV7(Database database) async {
     await _createV7Tables(database);
+  }
+
+  /// V8: stati del lotto (Prompt 19). Colonne additative su `lots`:
+  /// `status` (default 'active': TUTTI i lotti esistenti restano
+  /// attivi), `closed_at`, `withdrawn_reason`, `closing_note`,
+  /// `withdrawn_quantity`, `closed_by`. Nessuna riga viene toccata,
+  /// cancellata o riscritta. `_addColumn` verifica con
+  /// `PRAGMA table_info` che la colonna non esista già: la migrazione
+  /// è idempotente.
+  Future<void> _createV8Tables(Database database) async {
+    if (!await _tableExists(database, 'lots')) return;
+    await _addColumn(
+      database,
+      'lots',
+      'status',
+      "TEXT NOT NULL DEFAULT 'active'",
+    );
+    await _addColumn(database, 'lots', 'closed_at', 'TEXT');
+    await _addColumn(database, 'lots', 'withdrawn_reason', 'TEXT');
+    await _addColumn(database, 'lots', 'closing_note', 'TEXT');
+    await _addColumn(database, 'lots', 'withdrawn_quantity', 'TEXT');
+    await _addColumn(database, 'lots', 'closed_by', 'TEXT');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_lots_status ON lots(status)',
+    );
+  }
+
+  Future<void> _migrateV7toV8(Database database) async {
+    await _createV8Tables(database);
   }
 
   Future<void> _createV4Tables(Database database) async {

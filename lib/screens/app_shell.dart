@@ -50,6 +50,11 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int index = 0;
 
+  /// Filtro da preselezionare nell'elenco Lotti (Prompt 19, §4):
+  /// impostato dalla navigazione da "Oggi" (avviso lotti scaduti).
+  LotViewFilter _lotsInitialFilter = LotViewFilter.active;
+  int _lotsFilterRequest = 0;
+
   void _openTarget(String target) {
     final navigator = Navigator.of(context);
     switch (target) {
@@ -116,6 +121,15 @@ class _AppShellState extends State<AppShell> {
         ));
       case 'lots':
         setState(() => index = 2);
+      case 'lots:expired':
+        // Prompt 19, §4: avviso lotti scaduti → filtro "Scaduti"
+        // preselezionato nell'elenco Lotti. Il contatore fa sì che la
+        // richiesta sia "nuova" anche se ripetuta.
+        setState(() {
+          _lotsInitialFilter = LotViewFilter.expired;
+          _lotsFilterRequest++;
+          index = 2;
+        });
       case 'cooking':
         navigator.push(MaterialPageRoute(
           builder: (_) => CookingScreen(
@@ -211,8 +225,10 @@ class _AppShellState extends State<AppShell> {
         license: widget.license,
       ),
       LotsScreen(
+        key: ValueKey('lots_$_lotsFilterRequest'),
         repository: widget.repository,
         license: widget.license,
+        initialFilter: _lotsInitialFilter,
       ),
       ReportsScreen(repository: widget.repository, license: widget.license),
       MoreScreen(

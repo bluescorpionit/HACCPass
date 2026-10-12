@@ -676,6 +676,10 @@ class PdfService {
 
   Future<List<pw.Widget>> _lotsSection(DateTime from, DateTime to) async {
     final lots = await repository.getLots(from: from, to: to);
+    // Prompt 19, §6: il dossier riporta TUTTI i lotti del periodo, anche
+    // i chiusi, con stato e data di chiusura; i ritirati hanno anche una
+    // sezione dedicata con motivo e nota.
+    final withdrawn = lots.where((l) => l.isWithdrawn).toList();
     return [
       _sectionTitle('Registro lotti e rintracciabilit\u00E0'),
       if (lots.isEmpty)
@@ -683,10 +687,10 @@ class PdfService {
       else
         _table(
           headers: const [
-            'Codice', 'Prodotto', 'Produzione', 'Scadenza',
+            'Codice', 'Prodotto', 'Produzione', 'Scadenza', 'Stato',
             'Ingredienti (fornitore / lotto)', 'Operatore',
           ],
-          columnWidths: const [2.6, 3, 2.2, 2.2, 5, 2.2],
+          columnWidths: const [2.4, 2.8, 2, 2, 2.6, 4.6, 2],
           rows: [
             for (final l in lots)
               [
@@ -694,6 +698,7 @@ class PdfService {
                 l.productName,
                 _fmtDate(l.producedAt),
                 l.expiresAt == null ? '' : _fmtDate(l.expiresAt!),
+                _lotStateLabel(l),
                 l.ingredients.isEmpty
                     ? ''
                     : l.ingredients
@@ -704,7 +709,44 @@ class PdfService {
               ],
           ],
         ),
+      if (withdrawn.isNotEmpty) ...[
+        pw.SizedBox(height: 10),
+        _sectionTitle('Lotti ritirati dall\u2019uso'),
+        _table(
+          headers: const [
+            'Codice', 'Prodotto', 'Ritirato il', 'Motivo',
+            'Quantit\u00E0 smaltita', 'Nota',
+          ],
+          columnWidths: const [2.6, 3.2, 2.4, 2.6, 2.2, 4],
+          rows: [
+            for (final l in withdrawn)
+              [
+                l.code,
+                l.productName,
+                l.closedAt == null ? '' : _fmtDate(l.closedAt!),
+                l.withdrawnReason == null
+                    ? ''
+                    : LotWithdrawalReason.label(l.withdrawnReason!),
+                l.withdrawnQuantity ?? '',
+                l.closingNote ?? '',
+              ],
+          ],
+        ),
+      ],
     ];
+  }
+
+  /// "Attivo" / "Terminato il gg/mm/aaaa" / "Ritirato il gg/mm/aaaa
+  /// (motivo)" per la colonna Stato del dossier.
+  String _lotStateLabel(ProductionLot l) {
+    if (l.isActive) return 'Attivo';
+    final when =
+        l.closedAt == null ? '' : ' il ${_fmtDate(l.closedAt!)}';
+    if (l.isFinished) return 'Terminato$when';
+    final reason = l.withdrawnReason == null
+        ? ''
+        : ' (${LotWithdrawalReason.label(l.withdrawnReason!)})';
+    return 'Ritirato$when$reason';
   }
 
   Future<List<pw.Widget>> _ncSection(DateTime from, DateTime to) async {
@@ -1456,6 +1498,7 @@ class PdfService {
         _kv('Quantit\u00E0',
             '${lot.quantity?.toStringAsFixed(1) ?? '\u2014'} ${lot.unit ?? ''}'),
         _kv('Operatore', lot.operatorName),
+        _kv('Stato', _lotStateLabel(lot)),
         if (lot.allergenCodes.isNotEmpty)
           _kv('Allergeni', lot.allergenCodes.join(', ')),
         _sectionTitle('Ingredienti (rintracciabilit\u00E0 a monte)'),

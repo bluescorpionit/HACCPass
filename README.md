@@ -22,7 +22,10 @@ nessun server, nessun account, tutti i dati restano in un database SQLite locale
   (Allegato II), personale (Allegato VI), fornitori.
 - **Lotti**: codice automatico, scadenza precompilata, allergeni (14, Reg.
   UE 1169/2011), ingredienti collegati alle consegne, rintracciabilità a
-  monte/valle (Reg. CE 178/2002), etichetta 62x40 con QR.
+  monte/valle (Reg. CE 178/2002), etichetta 62x40 con QR. Tre stati —
+  attivo, terminato, ritirato/smaltito — con archivio, avvisi "Oggi" solo
+  per gli attivi e chiusura in blocco degli scaduti (Prompt 19, dettagli
+  in [`docs/lotti.md`](docs/lotti.md)).
 - **Report**: dossier HACCP completo per periodo (copertina, indicatori,
   registri, firma), singoli registri, menù allergeni, appendice fotografica
   (opzionale) delle NC e merci respinte, logo aziendale in intestazione.

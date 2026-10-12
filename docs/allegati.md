@@ -69,7 +69,7 @@ mostra la nota di verifica con il consulente HACCP.
 
 - **Backup del database** (`.bhb`, cifrabile): NON include le foto —
   dichiarato nella schermata. `manifest.schemaVersion` ora riporta la
-  versione REALE dello schema (6).
+  versione REALE dello schema.
 - **Backup completo con allegati** (opzione): database + tutte le foto,
   scritto **un file alla volta** (ZipFileEncoder, streaming: nessun picco
   di memoria anche con migliaia di foto), con progresso e annullamento.

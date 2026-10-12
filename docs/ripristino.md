@@ -174,5 +174,9 @@ l'app File con iCloud Drive.
 - Spazio libero: `df` su Android/Linux, PowerShell su Windows, non
   determinabile su iOS (si gestisce l'errore di scrittura con pulizia
   dei temporanei).
-- Schema database: v7 (`sync_queue.attachment_id`); il manifest del
-  backup riporta la versione reale.
+- Schema database: v8 (v7 `sync_queue.attachment_id`; v8 stati del lotto
+  in `lots`, migrazione puramente additiva — vedi `docs/lotti.md`); il
+  manifest del backup riporta la versione reale. I backup con schema più
+  vecchio si ripristinano: la migrazione gira alla prima apertura del DB
+  ripristinato, con copia di sicurezza `blue_haccp.db.pre_v8.bak` creata
+  prima di migrare.
