@@ -37,7 +37,7 @@
 		<string>_pdl-datastream._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Scatta foto di attrezzature, DDT, non conformità e scansiona i QR delle attrezzature.</string>
+	<string>Scatta foto di attrezzature, DDT, non conformità e scansiona i QR delle attrezzature e dei lotti.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Importa i fornitori dai contatti del telefono: solo se lo scegli tu.</string>
 	<key>NSLocalNetworkUsageDescription</key>

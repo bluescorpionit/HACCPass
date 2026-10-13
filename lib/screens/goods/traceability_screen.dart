@@ -6,6 +6,7 @@ import '../../models/haccp_models.dart';
 import '../../repositories/haccp_repository.dart';
 import '../../widgets/attachment_section.dart';
 import '../../widgets/common_widgets.dart';
+import '../qr_scanner_screen.dart';
 
 /// Ricerca rintracciabilità a monte e a valle (Reg. CE 178/2002).
 class TraceabilityScreen extends StatefulWidget {
@@ -27,6 +28,19 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
     setState(() => future = widget.repository.searchTraceability(query));
   }
 
+  /// Legge il QR dell'etichetta del lotto (contiene il codice) con la
+  /// fotocamera e lancia subito la ricerca di rintracciabilità.
+  Future<void> _scanAndSearch() async {
+    final code = await showQrScanner(
+      context,
+      hint: 'Inquadra il QR del lotto sull\u2019etichetta',
+    );
+    final clean = code?.trim() ?? '';
+    if (clean.isEmpty || !mounted) return;
+    controller.text = clean;
+    _search();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -35,17 +49,36 @@ class _TraceabilityScreenState extends State<TraceabilityScreen> {
       body: ListView(
         padding: screenPadding(context),
         children: [
-          TextField(
-            controller: controller,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _search(),
-            decoration: InputDecoration(
-              labelText: 'Cerca per lotto, prodotto o lotto fornitore',
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: _search,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _search(),
+                  decoration: InputDecoration(
+                    labelText:
+                        'Cerca per lotto, prodotto o lotto fornitore',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _search,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 56,
+                height: 56,
+                child: IconButton.filledTonal(
+                  key: const Key('traceability_scan_qr_button'),
+                  tooltip: 'Leggi il QR del lotto',
+                  onPressed: _scanAndSearch,
+                  icon: const Icon(Icons.qr_code_scanner),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(

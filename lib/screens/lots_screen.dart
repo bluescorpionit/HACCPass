@@ -16,6 +16,7 @@ import '../widgets/attachment_section.dart';
 import '../widgets/common_widgets.dart';
 import 'goods/products_screen.dart';
 import 'goods/traceability_screen.dart';
+import 'qr_scanner_screen.dart';
 
 /// Filtro dell'elenco Lotti (Prompt 19, §3).
 enum LotViewFilter {
@@ -122,6 +123,7 @@ class LotsScreen extends StatefulWidget {
     required this.license,
     this.productEditor,
     this.initialFilter = LotViewFilter.active,
+    this.openQrScanner,
   });
 
   final HaccpRepository repository;
@@ -134,6 +136,11 @@ class LotsScreen extends StatefulWidget {
     HaccpRepository repository, {
     Product? existing,
   })? productEditor;
+
+  /// Apertura dello scanner QR iniettabile per i test (default: la
+  /// schermata fotocamera, [showQrScanner]).
+  final Future<String?> Function(BuildContext context, String? hint)?
+      openQrScanner;
 
   /// Filtro iniziale: usato dalla navigazione da "Oggi" per aprire
   /// direttamente il filtro "Scaduti".
@@ -174,6 +181,51 @@ class _LotsScreenState extends State<LotsScreen> {
 
   HaccpRepository get repository => widget.repository;
   LicenseService get license => widget.license;
+
+  /// Apre la fotocamera, legge il QR dell'etichetta del lotto (contiene
+  /// il codice, vedi `buildLotLabel`) e attiva la ricerca. Se il filtro
+  /// corrente nasconderebbe il risultato (es. lotto chiuso con filtro
+  /// "Attivi"), passa a "Tutti".
+  Future<void> _scanQr(
+    BuildContext context,
+    List<ProductionLot> lots,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final scanned = await (widget.openQrScanner ??
+            (ctx, hint) => showQrScanner(ctx, hint: hint))(
+      context,
+      'Inquadra il QR del lotto sull\u2019etichetta',
+    );
+    final code = scanned?.trim() ?? '';
+    if (code.isEmpty || !mounted) return;
+
+    final q = code.toLowerCase();
+    final matches = lots
+        .where((l) =>
+            l.code.toLowerCase().contains(q) ||
+            l.productName.toLowerCase().contains(q))
+        .toList();
+
+    if (matches.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+              'Nessun lotto trovato per "$code".'),
+        ),
+      );
+    }
+
+    setState(() {
+      _searchController.text = code;
+      _query = code;
+      // Se il filtro attuale non mostrerebbe il risultato, cerca in
+      // tutto il registro.
+      final visible = filterLotsForView(lots, _filter, query: code);
+      if (visible.isEmpty && matches.isNotEmpty) {
+        _filter = LotViewFilter.all;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,23 +289,43 @@ class _LotsScreenState extends State<LotsScreen> {
                 label: const Text('Prodotti e allergeni'),
               ),
               const SizedBox(height: 12),
-              TextField(
-                key: const Key('lot_search_field'),
-                controller: _searchController,
-                onChanged: (v) => setState(() => _query = v),
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  labelText: 'Cerca per codice, prodotto o ingrediente',
-                  suffixIcon: _query.isEmpty
-                      ? const Icon(Icons.search)
-                      : IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                        ),
-                ),
+              // Ricerca testuale + lettura del QR dell'etichetta del
+              // lotto con la fotocamera: il QR contiene il codice lotto.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('lot_search_field'),
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _query = v),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        labelText: 'Cerca per codice, prodotto o ingrediente',
+                        suffixIcon: _query.isEmpty
+                            ? const Icon(Icons.search)
+                            : IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _query = '');
+                                },
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: IconButton.filledTonal(
+                      key: const Key('lot_scan_qr_button'),
+                      tooltip: 'Leggi il QR del lotto',
+                      onPressed: () => _scanQr(context, lots),
+                      icon: const Icon(Icons.qr_code_scanner),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               // Filtro in alto (Prompt 19, §3): Attivi · Scaduti ·
@@ -1239,48 +1311,58 @@ class _LotCard extends StatelessWidget {
               ],
               const SizedBox(height: 10),
               if (lot.isActive) ...[
-                // Prompt 19, §2: due azioni in orizzontale (regola di
-                // progetto: massimo 2 in riga). Per i lotti già scaduti
-                // "Ritira / smaltisci" è l'azione consigliata.
-                Row(
-                  children: [
-                    Expanded(
-                      child: lot.isExpired
-                          ? OutlinedButton.icon(
-                              key: const Key('lot_finish_button'),
-                              onPressed: () => _finish(context),
-                              icon: const Icon(Icons.task_alt_outlined),
-                              label: const Text('Segna come terminato'),
-                            )
-                          : FilledButton.icon(
-                              key: const Key('lot_finish_button'),
-                              onPressed: () => _finish(context),
-                              icon: const Icon(Icons.task_alt_outlined),
-                              label: const Text('Segna come terminato'),
-                            ),
+                // Prompt 19, §2: le due azioni di chiusura a larghezza
+                // PIENA (quella della riga di azioni sotto), una per
+                // riga: SizedBox(width: double.infinity) perché nel
+                // Column con crossAxisAlignment.start i pulsanti si
+                // fermerebbero alla larghezza del contenuto. Per i
+                // lotti già scaduti "Ritira / smaltisci" è l'azione
+                // consigliata e sta in alto.
+                if (lot.isExpired) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: const Key('lot_withdraw_button'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colors.danger,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => _withdrawSheet(context),
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      label: const Text('Ritira / smaltisci'),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: lot.isExpired
-                          ? FilledButton.icon(
-                              key: const Key('lot_withdraw_button'),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: colors.danger,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () => _withdrawSheet(context),
-                              icon: const Icon(Icons.warning_amber_outlined),
-                              label: const Text('Ritira / smaltisci'),
-                            )
-                          : OutlinedButton.icon(
-                              key: const Key('lot_withdraw_button'),
-                              onPressed: () => _withdrawSheet(context),
-                              icon: const Icon(Icons.warning_amber_outlined),
-                              label: const Text('Ritira / smaltisci'),
-                            ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const Key('lot_finish_button'),
+                      onPressed: () => _finish(context),
+                      icon: const Icon(Icons.task_alt_outlined),
+                      label: const Text('Segna come terminato'),
                     ),
-                  ],
-                ),
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: const Key('lot_finish_button'),
+                      onPressed: () => _finish(context),
+                      icon: const Icon(Icons.task_alt_outlined),
+                      label: const Text('Segna come terminato'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const Key('lot_withdraw_button'),
+                      onPressed: () => _withdrawSheet(context),
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      label: const Text('Ritira / smaltisci'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 // Prompt 16, §1–§2: quattro azioni UGUALI in orizzontale
                 // (icona sopra, testo sotto su una riga, 56 dp).

@@ -11,6 +11,7 @@ import 'package:haccpass/models/haccp_models.dart';
 import 'package:haccpass/repositories/haccp_repository.dart';
 import 'package:haccpass/screens/lots_screen.dart';
 import 'package:haccpass/services/license_service.dart';
+import 'package:haccpass/widgets/common_widgets.dart';
 
 /// Prompt 19, §8 (test widget): azioni sulla scheda, badge scaduto,
 /// passaggio in Archivio con Annulla funzionante, ritiro con motivo.
@@ -62,6 +63,8 @@ void main() {
     Size size = const Size(360, 900),
     double textScale = 1.0,
     LotViewFilter initialFilter = LotViewFilter.active,
+    Future<String?> Function(BuildContext context, String? hint)?
+        openQrScanner,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -73,6 +76,7 @@ void main() {
         repository: repository,
         license: _StubLicense(),
         initialFilter: initialFilter,
+        openQrScanner: openQrScanner,
       ),
     ));
     await tester.pump();
@@ -95,7 +99,7 @@ void main() {
 
   testWidgets(
       'scheda lotto attivo: "Segna come terminato" e "Ritira / smaltisci" '
-      'in orizzontale senza overflow a 360 dp scala 1.15',
+      'a larghezza piena su due righe, senza overflow a 360 dp scala 1.15',
       (tester) async {
     await tester.runAsync(
         () => seedLot(code: 'W1', expiresAt: DateTime.now().add(const Duration(days: 5))));
@@ -106,14 +110,22 @@ void main() {
     expect(find.text('Segna come terminato'), findsOneWidget);
     expect(find.text('Ritira / smaltisci'), findsOneWidget);
 
-    // Entrambi i pulsanti sono sullo stesso asse orizzontale.
+    // Due righe distinte, entrambe a larghezza PIENA: identica a quella
+    // della riga di azioni Stampa/Etichetta/Rintraccio/Allegati sotto
+    // (è esattamente ciò che chiede il requisito: "la larghezza che
+    // occupano i pulsanti sotto").
+    final actionsRowWidth =
+        tester.getRect(find.byType(ActionButtonRow).first).width;
     final finishBox = tester.getRect(
         find.byKey(const Key('lot_finish_button')));
     final withdrawBox = tester.getRect(
         find.byKey(const Key('lot_withdraw_button')));
-    expect(withdrawBox.top, greaterThanOrEqualTo(finishBox.top));
-    expect(withdrawBox.bottom, lessThanOrEqualTo(finishBox.bottom + 8),
-        reason: 'i due pulsanti stanno sulla stessa riga');
+    expect(withdrawBox.top, greaterThan(finishBox.bottom),
+        reason: 'i due pulsanti sono impilati su due righe');
+    expect(finishBox.width, moreOrLessEquals(actionsRowWidth, epsilon: 1),
+        reason: 'Segna come terminato largo come la riga azioni sotto');
+    expect(withdrawBox.width, moreOrLessEquals(actionsRowWidth, epsilon: 1),
+        reason: 'Ritira / smaltisci largo come la riga azioni sotto');
     expect(tester.takeException(), isNull,
         reason: 'nessun overflow a 360 dp con testo 1.15');
   });
@@ -242,6 +254,58 @@ void main() {
     await settleDb(tester);
     expect(find.textContaining('Ritirato il'), findsOneWidget);
     expect(find.textContaining('(Scaduto)'), findsOneWidget);
+  });
+
+  testWidgets('ricerca per QR: il codice letto attiva la ricerca e passa a "Tutti" se il lotto è chiuso',
+      (tester) async {
+    final ids = await tester.runAsync(() async {
+      final openId = await seedLot(
+          code: 'QR-OPEN', expiresAt: DateTime.now().add(const Duration(days: 3)));
+      final closedId = await seedLot(code: 'QR-CLOSED');
+      await repository.finishLot(closedId);
+      return (openId, closedId);
+    });
+    expect(ids!.$1, greaterThan(0));
+
+    // Scanner finto iniettato: "legge" il QR del lotto chiuso.
+    await pumpLots(
+      tester,
+      openQrScanner: (context, hint) async => 'QR-CLOSED',
+    );
+
+    expect(find.byKey(const Key('lot_scan_qr_button')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('lot_scan_qr_button')));
+    await settleDb(tester);
+
+    // La ricerca si è riempita col codice letto e il filtro è passato a
+    // "Tutti" perché "Attivi" nascondeva il risultato.
+    expect(find.byKey(const Key('lot_search_field')), findsOneWidget);
+    final field = tester.widget<TextField>(
+        find.byKey(const Key('lot_search_field')));
+    expect(field.controller!.text, 'QR-CLOSED');
+    expect(find.textContaining('QR-CLOSED'), findsWidgets,
+        reason: 'il campo di ricerca e la scheda del lotto trovato');
+    expect(find.byKey(const Key('lot_reopen_button')), findsOneWidget,
+        reason: 'la scheda del lotto chiuso è visibile nel filtro "Tutti"');
+  });
+
+  testWidgets('ricerca per QR: codice sconosciuto, avviso e campo compilato',
+      (tester) async {
+    await tester.runAsync(() => seedLot(
+        code: 'ALTRO',
+        expiresAt: DateTime.now().add(const Duration(days: 2))));
+    await pumpLots(
+      tester,
+      openQrScanner: (context, hint) async => 'L-INESISTENTE',
+    );
+
+    await tester.tap(find.byKey(const Key('lot_scan_qr_button')));
+    await settleDb(tester);
+
+    expect(find.textContaining('Nessun lotto trovato'), findsOneWidget);
+    final field = tester.widget<TextField>(
+        find.byKey(const Key('lot_search_field')));
+    expect(field.controller!.text, 'L-INESISTENTE');
   });
 
   testWidgets('filtro Scaduti con "Chiudi in blocco": conferma esplicita',

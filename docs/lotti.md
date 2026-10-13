@@ -39,7 +39,12 @@ Il filtro in alto ha quattro viste:
   "Aggiungi nota".
 - **Tutti**: tutto l'elenco, con gli stati ben distinguibili.
 
-La ricerca testuale funziona su tutte le viste.
+La ricerca testuale funziona su tutte le viste. Accanto al campo c'è il
+pulsante **"Leggi il QR del lotto"**: apre la fotocamera, legge il QR
+dell'etichetta (che contiene il codice lotto) e attiva subito la ricerca;
+se il filtro corrente nasconderebbe il risultato (es. lotto chiuso con
+filtro "Attivi") passa a "Tutti". Lo stesso pulsante è nella ricerca di
+rintracciabilità. Il permesso fotocamera si chiede al primo uso.
 
 ## Avvisi in "Oggi"
 
