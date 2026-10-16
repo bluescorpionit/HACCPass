@@ -30,8 +30,10 @@ comporta il backup automatico. Riferimento: Prompt 12.
      (mai in automatico, solo dal pulsante);
    - elenco della cartella `Backup` con tipo (Solo dati / Completo con
      foto, dal nome `HACCPass_backup_completo_*` e dal manifest), data,
-     dimensione e badge "Cifrato" (primi 4 byte `BHB1`/`BHB2` letti con
-     una richiesta Range, senza scaricare il file);
+     dimensione e badge (primi 5 byte letti con una richiesta Range,
+     senza scaricare il file: "Protetto dall'app" per i backup nuovi
+     con involucro `HPBK1`, "Cifrato" per i vecchi con password
+     `BHB1`/`BHB2`);
    - il più recente è preselezionato;
    - **controllo dello spazio** prima di scaricare: servono almeno
      2,5 × la dimensione del file (download + estrazione + backup di
@@ -54,9 +56,15 @@ comporta il backup automatico. Riferimento: Prompt 12.
 | | Solo dati (`.bhb`) | Completo (`HACCPass_backup_completo_*.bhb`) |
 |---|---|---|
 | Contenuto | database + manifest | database + manifest + cartella `attachments` (foto e documenti) |
-| Cifratura | Opzionale (password, AES-256-GCM) | **Non cifrabile** (scritto in streaming) |
+| Involucro dell'app (`HPBK1`) | Sempre | Sempre (a flusso a blocchi) |
+| Password dell'utente | Opzionale (AES-256-GCM) | Non disponibile (scritto in streaming) |
 | Recupero foto | Successivo, da `HACCPass/Foto` sul Drive | Foto ripristinate dal file stesso |
-| Lettura | Intero in memoria SOLO se cifrato (dimensioni piccole: solo database) | Streaming su file temporanei, nessun picco di RAM |
+| Lettura | Intero in memoria SOLO se cifrato con password (dimensioni piccole: solo database) | Streaming su file temporanei, nessun picco di RAM |
+
+Dal Prompt 20 OGNI backup nuovo è chiuso nell'involucro cifrato e
+autenticato dell'app (`HPBK1`): un file alterato non si ripristina e il
+file non è apribile a mano (dettagli e limiti in `docs/backup.md`). I
+backup creati prima (senza marcatore) si aprono come sempre.
 
 ## 4. Cosa non viene MAI ripristinato
 
@@ -66,8 +74,14 @@ comporta il backup automatico. Riferimento: Prompt 12.
   sostituzione del database e riscritti dopo: un backup non può
   importare (né manomettere) lo stato di licenza. Dal Prompt 13 le
   righe delle vecchie chiavi offline non concedono comunque nulla
-  (licenza solo store) e la data della
-  prova non torna mai indietro (vince la più antica, regola dell'ancora).
+  (licenza solo store). La data della prova non torna mai indietro:
+  dal Prompt 20 il manifest può portare l'**ancora firmata** della
+  prova (`trialAnchor`): con firma valida vince la più antica tra
+  telefono, ancora e database del backup; con firma non valida o
+  assente in un backup che la dichiarava, NESSUNA data della prova
+  viene presa dal backup (nessun giorno in più) ma i dati si
+  ripristinano; nei backup vecchi vale la regola storica "vince la
+  più antica" (vedi `docs/backup.md` e `docs/acquisti.md`).
 - **Token OAuth** (google_sign_in): vivono nel secure storage di
   sistema, mai nel database né nei backup.
 - **Password di cifratura**: mai salvata da nessuna parte.
@@ -115,13 +129,25 @@ Coperto da test (`restore_service_test.dart`, `license_restore_test.dart`).
 
 ## 7. Cifratura
 
-- **BHB2** (attuale): salt 16 byte da `Random.secure()`, nonce
-  AES-GCM casuale, iterazioni PBKDF2-SHA256 scritte nell'intestazione
-  (default 600.000).
-- **BHB1** (storico): 120.000 iterazioni, salt nel file. Ancora leggibile
-  per compatibilità; non più generato.
-- Il backup completo con foto non è cifrabile (dichiarato nelle
-  schermate di backup e di ripristino).
+Dall'esterno all'interno un file `.bhb` ha fino a tre strati (Prompt 20,
+dettagli in `docs/backup.md`):
+
+1. **Involucro dell'app `HPBK1`** (sempre, dal Prompt 20):
+   AES-256-GCM a blocchi con chiave costante dell'app derivata con
+   HKDF. Tag non valido = "backup alterato o danneggiato". I backup
+   vecchi senza marcatore si aprono come prima.
+2. **Password dell'utente** (facoltativa, solo backup di soli dati):
+   - **BHB2** (attuale): salt 16 byte da `Random.secure()`, nonce
+     AES-GCM casuale, iterazioni PBKDF2-SHA256 scritte
+     nell'intestazione (default 600.000);
+   - **BHB1** (storico): 120.000 iterazioni, salt nel file. Ancora
+     leggibile per compatibilità; non più generato.
+3. **ZIP** con database, manifest e (nei completi) gli allegati.
+
+Il backup completo con foto non accetta password (streaming), ma è
+comunque chiuso nell'involucro dell'app. Il badge nell'elenco del
+wizard distingue "Protetto dall'app" (involucro) da "Cifrato"
+(password: solo i backup vecchi si riconoscono dai primi byte).
 
 ## 8. Limiti dell'accesso `drive.file` e fallback
 

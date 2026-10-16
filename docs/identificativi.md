@@ -132,9 +132,22 @@ usato da `TrialAnchor`):
   modifica casuale dell'ancora. Sta nel binario, non è un segreto
   forte e **non protegge nessuna licenza**: la licenza dipende solo
   dallo store (abbonamento `it.bluescorpion.haccpass.annual`).
+- **Il valore deve restare IDENTICO fra le build** (dal Prompt 20
+  firma anche l'ancora dentro i backup Drive): se cambiasse, le ancore
+  firmate col vecchio segreto — file di piattaforma e manifest dei
+  backup esistenti — risulterebbero non valide e verrebbero trattate
+  come alterate (nessun crash, nessun giorno di prova regalato, ma la
+  barriera della reinstallazione si indebolisce). Per le app già in
+  produzione vale il segreto della build corrente: NON cambiarlo.
+- **Non c'entra con la chiave dei backup**: l'involucro cifrato dei
+  backup (`HPBK1`, `lib/services/backup_envelope.dart`) usa una chiave
+  costante separata, identificata da un `keyId`, e NON dipende da
+  `BH_ANCHOR_SECRET`: cambiare il segreto di build non rende illeggibile
+  nessun backup (vedi `docs/backup.md`).
 - Build di **release** con il valore vuoto: l'app **si rifiuta di
   avviarsi** con errore esplicito (`AppIntegrity.assertConfigured`).
-- In **debug** resta consentito, con avviso in console.
+- In **debug** resta consentito, con avviso in console: niente firma
+  né verifica dell'ancora (nemmeno nei backup).
 - **Alias di compatibilità**: se `BH_ANCHOR_SECRET` è vuoto viene usato
   il vecchio `BH_LICENSE_SECRET` (le configurazioni esistenti —
   `.vscode`, script — continuano a funzionare; meglio rinominarlo).

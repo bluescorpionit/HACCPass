@@ -11,7 +11,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/app_database.dart';
+import '../core/license/app_integrity.dart';
+import '../core/license/trial_anchor.dart';
 import '../repositories/haccp_repository.dart';
+import 'backup_envelope.dart';
 import 'cloud/cloud_storage.dart';
 
 /// Backup in formato `.bhb`: archivio ZIP con il database e un
@@ -19,24 +22,40 @@ import 'cloud/cloud_storage.dart';
 /// Facoltativamente cifrato con AES-256-GCM e chiave derivata con PBKDF2:
 /// la password non viene mai salvata.
 ///
-/// Formati di cifratura:
-/// - **BHB1** (storico): magic + salt(16) + nonce(12) + ciphertext,
-///   PBKDF2-SHA256 a 120.000 iterazioni. Il salt era quasi costante:
-///   viene letto per compatibilità ma non generato più.
-/// - **BHB2** (attuale): magic + salt(16) casuale (`Random.secure()`) +
-///   nonce(12) + iterazioni PBKDF2 (4 byte big-endian, default 600.000)
-///   + ciphertext.
+/// Strati di un file `.bhb`, dall'esterno all'interno:
 ///
-/// Il backup COMPLETO (con le foto) non è cifrabile: la cifratura
-/// richiede l'archivio intero in memoria e i backup completi sono
-/// scritti in streaming. L'interfaccia lo dichiara.
+/// 1. **Involucro dell'app `HPBK1`** (dal Prompt 20, SEMPRE presente nei
+///    backup nuovi, anche senza password): AES-256-GCM a blocchi con
+///    chiave costante dell'app derivata con HKDF (vedi
+///    `BackupEnvelope`). Un file alterato fallisce subito il ripristino.
+///    I backup vecchi senza marcatore si aprono come prima.
+/// 2. **Cifratura con password** (facoltativa, solo backup di soli
+///    dati): il livello dell'utente resta INTERNO all'involucro.
+///    - **BHB1** (storico): magic + salt(16) + nonce(12) + ciphertext,
+///      PBKDF2-SHA256 a 120.000 iterazioni. Il salt era quasi costante:
+///      viene letto per compatibilità ma non generato più.
+///    - **BHB2** (attuale): magic + salt(16) casuale (`Random.secure()`)
+///      + nonce(12) + iterazioni PBKDF2 (4 byte big-endian, default
+///      600.000) + ciphertext.
+/// 3. **ZIP** con `blue_haccp.db` + `manifest.json` (+ `attachments/`
+///    nei backup completi).
+///
+/// Il manifest dei backup nuovi porta anche l'**ancora firmata della
+/// prova** (`trialAnchor` + `trialAnchorVersion`, Prompt 20): solo due
+/// date e una firma HMAC, nessun altro dato personale.
+///
+/// Il backup COMPLETO (con le foto) non è cifrabile con la password
+/// dell'utente (l'archivio è scritto in streaming); l'involucro
+/// dell'app invece viene applicato SEMPRE, a flusso a blocchi.
 class BackupService {
   BackupService({
     required this.repository,
     required this.appVersion,
     this.attachmentsRootOverride,
     int? encryptionRounds,
-  }) : _encryptionRounds = encryptionRounds ?? pbkdf2RoundsV2;
+    TrialAnchor? trialAnchor,
+  })  : _encryptionRounds = encryptionRounds ?? pbkdf2RoundsV2,
+        _trialAnchorOverride = trialAnchor;
 
   final HaccpRepository repository;
   final String appVersion;
@@ -50,6 +69,17 @@ class BackupService {
   /// nell'intestazione del file.
   final int _encryptionRounds;
 
+  /// Ancora della prova per firmare la data nel manifest (iniettabile
+  /// nei test; default: supporto della piattaforma con
+  /// `AppIntegrity.anchorSecret`).
+  TrialAnchor? _trialAnchorOverride;
+
+  TrialAnchor get _trialAnchor => _trialAnchorOverride ??=
+      TrialAnchor.platform(secret: AppIntegrity.anchorSecret);
+
+  /// Involucro cifrato dell'app: applicato a OGNI backup nuovo.
+  final BackupEnvelope _envelope = BackupEnvelope();
+
   static const magicV1 = 'BHB1';
   static const magicV2 = 'BHB2';
   static const pbkdf2RoundsV1 = 120000;
@@ -57,6 +87,11 @@ class BackupService {
   static const _saltLength = 16;
   static const _nonceLength = 12;
   static const int keepCount = 14;
+
+  /// Soglia (byte) sotto la quale l'involucro HPBK1 viene aperto in
+  /// memoria (backup di soli dati: piccoli): meno round-trip di I/O.
+  /// Oltre, si usa il flusso a blocchi (backup completi con foto).
+  static const int inlineEnvelopeLimit = 16 * 1024 * 1024;
 
   /// Prefisso dei file di backup creati da HACCPass: SOLO i file con
   /// questo prefisso possono essere eliminati dalla conservazione cloud.
@@ -82,10 +117,38 @@ class BackupService {
     return db.getVersion();
   }
 
+  /// Campi `trialAnchor`/`trialAnchorVersion` del manifest (Prompt 20):
+  /// l'ancora firmata con la data di inizio EFFETTIVA della prova (la
+  /// più antica tra database e ancora, ricalcolata con
+  /// `TrialAnchor.synchronize`).
+  ///
+  /// Restituisce una mappa vuota (campi omessi) quando non esiste ancora
+  /// una data (installazione senza avvio completato) o il segreto è
+  /// vuoto (solo debug: non si firma): in quel caso anche
+  /// `trialAnchorVersion` viene omesso e il backup, per l'ancora, si
+  /// legge come uno vecchio. Un problema sull'ancora non fa MAI
+  /// fallire la creazione del backup.
+  Future<Map<String, Object>> _signedTrialAnchorFields() async {
+    try {
+      final dbTrial =
+          DateTime.tryParse(await repository.getSetting('trial_started_at'));
+      final result = await _trialAnchor.synchronize(databaseStart: dbTrial);
+      if (result.firstInstall) return const {};
+      final signed =
+          _trialAnchor.exportSigned(result.start, result.lastSeen ?? DateTime.now());
+      if (signed == null) return const {};
+      return {'trialAnchor': signed, 'trialAnchorVersion': TrialAnchor.version};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Crea il file di backup (chiusura coerente del DB, copia, manifest,
-  /// cifra facoltativa). Restituisce il percorso del file pronto.
+  /// cifra facoltativa, involucro dell'app sempre). Restituisce il
+  /// percorso del file pronto.
   Future<String> createBackup({String? password}) async {
     final schemaVersion = await _schemaVersion();
+    final trialAnchorFields = await _signedTrialAnchorFields();
     await repository.closeForBackup();
     try {
       final dbPath = _database.path;
@@ -114,6 +177,7 @@ class BackupService {
         'dbSha256': dbHash
             .map((b) => b.toRadixString(16).padLeft(2, '0'))
             .join(),
+        ...trialAnchorFields,
       };
       final manifestBytes = utf8.encode(jsonEncode(manifest));
       archive.addFile(
@@ -125,6 +189,10 @@ class BackupService {
       if (password != null && password.isNotEmpty) {
         bytes = await _encrypt(bytes, password);
       }
+
+      // Involucro cifrato e autenticato dell'app: SEMPRE, esterno
+      // all'eventuale strato della password (Prompt 20, §2-bis).
+      bytes = await _envelope.sealBytes(bytes);
 
       final dir = await Directory.systemTemp.createTemp('bh_backup');
       final name = 'HACCPass_backup_$timestamp.bhb';
@@ -139,9 +207,10 @@ class BackupService {
 
   /// Backup COMPLETO con allegati (Prompt 8, B4): scrittura in streaming
   /// su disco (ZipFileEncoder), un file alla volta: nessun picco di
-  /// memoria anche con centinaia di foto. NON cifrabile (la cifratura
-  /// richiede l'archivio intero in RAM): il backup cifrato resta
-  /// limitato al database e l'interfaccia lo dichiara.
+  /// memoria anche con centinaia di foto. NON cifrabile con la password
+  /// dell'utente (quella richiede l'archivio intero in RAM); l'involucro
+  /// cifrato dell'app invece viene applicato SEMPRE, a flusso a blocchi
+  /// dopo la chiusura dello ZIP.
   ///
   /// [onProgress] riceve (file scritti, file totali); [olderThan] limita
   /// gli allegati all'intervallo scelto (null = tutto). Restituisce null
@@ -152,6 +221,7 @@ class BackupService {
     bool Function()? shouldCancel,
   }) async {
     final schemaVersion = await _schemaVersion();
+    final trialAnchorFields = await _signedTrialAnchorFields();
     final attachmentsRoot = await attachmentsRootPath();
 
     // Elenco dei file da includere PRIMA di chiudere il DB.
@@ -189,6 +259,7 @@ class BackupService {
         'createdAt': DateTime.now().toIso8601String(),
         'attachments': true,
         'attachmentsCount': files.length,
+        ...trialAnchorFields,
       };
       final manifestFile = File(p.join(dir.path, 'manifest.json'))
         ..writeAsStringSync(jsonEncode(manifest), flush: true);
@@ -207,51 +278,91 @@ class BackupService {
         done++;
         onProgress?.call(done, total);
       }
-      return destination;
     } finally {
       if (!closed) await encoder.close();
       await _database.initialize();
       repository.revision.value++;
     }
+
+    // Involucro cifrato e autenticato dell'app, a flusso a blocchi sul
+    // file già chiuso: stessa protezione dei backup di soli dati, senza
+    // caricare l'archivio in memoria (Prompt 20, §2-bis).
+    final sealed = '$destination.hpbk';
+    try {
+      await _envelope.sealFile(destination, sealed);
+    } catch (_) {
+      try {
+        await File(sealed).delete();
+      } catch (_) {
+        // Pulizia best-effort del parziale.
+      }
+      rethrow;
+    }
+    await File(destination).delete();
+    await File(sealed).rename(destination);
+    return destination;
   }
 
   /// Ripristina gli allegati di un backup completo: copia i file (uno alla
   /// volta, streaming) nella cartella allegati. Il database va ripristinato
-  /// prima con [RestoreService]. Gli allegati cifrati non sono previsti (i
-  /// backup completi non sono cifrabili).
+  /// prima con [RestoreService]. Gli allegati cifrati con password non sono
+  /// previsti (i backup completi non sono cifrabili con password); se il
+  /// file ha l'involucro dell'app viene rimosso prima (a blocchi).
+  /// [RestoreService] passa il file già aperto; il metodo accetta anche
+  /// il file di backup originale.
   Future<int> restoreAttachments(
     String backupPath, {
     void Function(int done, int total)? onProgress,
     bool Function()? shouldCancel,
   }) async {
-    final input = InputFileStream(backupPath);
-    final archive = ZipDecoder().decodeStream(input);
-    final attachmentsRoot = await attachmentsRootPath();
-    final entries = archive.files
-        .where((f) => !f.isFile ? false : f.name.startsWith('attachments/'))
-        .toList();
-    var done = 0;
-    var cancelled = false;
+    var archivePath = backupPath;
+    String? tempInnerDir;
     try {
-      for (final entry in entries) {
-        if (shouldCancel?.call() ?? false) {
-          cancelled = true;
-          break;
-        }
-        final relative = entry.name.substring('attachments/'.length);
-        final destination = p.join(attachmentsRoot, relative);
-        await Directory(p.dirname(destination)).create(recursive: true);
-        final output = OutputFileStream(destination);
-        entry.writeContent(output);
-        await output.close();
-        done++;
-        onProgress?.call(done, entries.length);
+      final magic = await BackupEnvelope.readMagic(File(backupPath));
+      if (BackupEnvelope.isEnvelopeMagic(magic)) {
+        final dir = await Directory.systemTemp.createTemp('bh_attach');
+        tempInnerDir = dir.path;
+        archivePath = p.join(dir.path, 'inner.bhb');
+        await _envelope.openToFile(backupPath, archivePath);
       }
+
+      final input = InputFileStream(archivePath);
+      final archive = ZipDecoder().decodeStream(input);
+      final attachmentsRoot = await attachmentsRootPath();
+      final entries = archive.files
+          .where((f) => !f.isFile ? false : f.name.startsWith('attachments/'))
+          .toList();
+      var done = 0;
+      var cancelled = false;
+      try {
+        for (final entry in entries) {
+          if (shouldCancel?.call() ?? false) {
+            cancelled = true;
+            break;
+          }
+          final relative = entry.name.substring('attachments/'.length);
+          final destination = p.join(attachmentsRoot, relative);
+          await Directory(p.dirname(destination)).create(recursive: true);
+          final output = OutputFileStream(destination);
+          entry.writeContent(output);
+          await output.close();
+          done++;
+          onProgress?.call(done, entries.length);
+        }
+      } finally {
+        await input.close();
+      }
+      if (cancelled) throw const BackupCancelledException();
+      return entries.length;
     } finally {
-      await input.close();
+      if (tempInnerDir != null) {
+        try {
+          await Directory(tempInnerDir).delete(recursive: true);
+        } catch (_) {
+          // Pulizia best-effort.
+        }
+      }
     }
-    if (cancelled) throw const BackupCancelledException();
-    return entries.length;
   }
 
   /// Radice della cartella allegati: iniettabile per i test, in
@@ -417,6 +528,12 @@ class BackupService {
   /// non in memoria: anche un backup completo con migliaia di foto non
   /// provoca picchi di RAM. Il manifest (piccolo) resta in memoria.
   ///
+  /// Se il file inizia con il marcatore `HPBK1` viene prima rimosso
+  /// l'involucro cifrato dell'app (tag non valido = "backup alterato o
+  /// danneggiato", errore pulito, nessun crash); poi il flusso è quello
+  /// di sempre (password se presente lo strato interno, ZIP altrimenti).
+  /// I backup VECCHI (nessun marcatore) si aprono esattamente come prima.
+  ///
   /// I backup CIFRATI sono di solo database (dimensioni piccole): per
   /// quelli il file viene letto interamente in memoria, limite dichiarato.
   /// Chiama [BackupHandle.dispose] quando hai finito.
@@ -432,7 +549,32 @@ class BackupService {
     final tempDb = p.join(tempDir.path, 'blue_haccp.db');
 
     try {
-      final header = await _readHeader(file);
+      var archivePath = path;
+      final outerMagic = await BackupEnvelope.readMagic(file);
+      if (BackupEnvelope.isEnvelopeMagic(outerMagic)) {
+        final inner = p.join(tempDir.path, 'inner.bhb');
+        try {
+          // I backup di soli dati sono piccoli: apertura intera in
+          // memoria (come già faceva il ramo con password, pochi
+          // round-trip di I/O). I backup completi, grandi, usano il
+          // flusso a blocchi di openToFile.
+          final length = await file.length();
+          if (length <= inlineEnvelopeLimit) {
+            final clear = await _envelope.openBytes(
+              Uint8List.fromList(await file.readAsBytes()),
+            );
+            await File(inner).writeAsBytes(clear, flush: true);
+          } else {
+            await _envelope.openToFile(path, inner);
+          }
+        } on BackupEnvelopeException catch (e) {
+          throw BackupException(e.message);
+        }
+        archivePath = inner;
+      }
+
+      final magic = await BackupEnvelope.readMagic(File(archivePath));
+      final header = magic.length >= 4 ? magic.substring(0, 4) : '';
       final encrypted = header == magicV1 || header == magicV2;
       if (encrypted && (password == null || password.isEmpty)) {
         throw const BackupException(
@@ -443,7 +585,7 @@ class BackupService {
       Map<String, Object?> manifest;
       if (encrypted) {
         final bytes =
-            await _decrypt(await file.readAsBytes(), password!);
+            await _decrypt(await File(archivePath).readAsBytes(), password!);
         try {
           final archive = ZipDecoder().decodeBytes(bytes);
           final dbEntry = archive.find('blue_haccp.db');
@@ -463,7 +605,17 @@ class BackupService {
           );
         }
       } else {
-        final input = InputFileStream(path);
+        // Formato non riconosciuto (né ZIP, né cifrato BHB, né
+        // involucro HPBK1): probabilmente creato da una versione più
+        // recente dell'app. Messaggio chiaro, mai un crash.
+        if (!header.startsWith('PK')) {
+          throw const BackupException(
+            'Il file non è un backup di HACCPass o è stato creato da una '
+            'versione pi\u00F9 recente dell\u2019app: aggiorna HACCPass '
+            'prima di ripristinarlo.',
+          );
+        }
+        final input = InputFileStream(archivePath);
         try {
           final archive = ZipDecoder().decodeStream(input);
           final dbEntry = archive.find('blue_haccp.db');
@@ -477,6 +629,12 @@ class BackupService {
           final output = OutputFileStream(tempDb);
           dbEntry.writeContent(output);
           await output.close();
+        } on BackupException {
+          rethrow;
+        } catch (_) {
+          throw const BackupException(
+            'Il file non è un backup di HACCPass valido o è danneggiato.',
+          );
         } finally {
           await input.close();
         }
@@ -488,25 +646,12 @@ class BackupService {
         manifest: manifest,
         schemaVersion: (manifest['schemaVersion'] as num?)?.toInt() ?? 0,
         hasAttachments: manifest['attachments'] == true,
+        archivePath: archivePath,
         tempDir: tempDir.path,
       );
     } catch (_) {
       await _tryDeleteDir(tempDir);
       rethrow;
-    }
-  }
-
-  Future<String> _readHeader(File file) async {
-    try {
-      final bytes = <int>[];
-      await for (final chunk in file.openRead(0, 4)) {
-        bytes.addAll(chunk);
-        if (bytes.length >= 4) break;
-      }
-      if (bytes.length < 4) return '';
-      return utf8.decode(bytes, allowMalformed: true);
-    } catch (_) {
-      return '';
     }
   }
 
@@ -730,6 +875,7 @@ class BackupHandle {
     required this.manifest,
     required this.schemaVersion,
     required this.hasAttachments,
+    required this.archivePath,
     required this.tempDir,
   });
 
@@ -737,6 +883,12 @@ class BackupHandle {
   final Map<String, Object?> manifest;
   final int schemaVersion;
   final bool hasAttachments;
+
+  /// Percorso dell'archivio estratto (senza l'eventuale involucro
+  /// dell'app): utile per il ripristino degli allegati dei backup
+  /// completi senza rimuovere due volte lo stesso involucro.
+  final String archivePath;
+
   final String tempDir;
 
   DateTime? get createdAt =>
@@ -745,6 +897,16 @@ class BackupHandle {
   String? get appVersion => manifest['appVersion'] as String?;
 
   int? get attachmentsCount => (manifest['attachmentsCount'] as num?)?.toInt();
+
+  /// Ancora della prova firmata presente nel manifest (Prompt 20), se
+  /// il backup la contiene (null per i backup vecchi o senza data).
+  String? get trialAnchor => manifest['trialAnchor'] as String?;
+
+  /// Versione dell'ancora dichiarata dal backup: ≥ 1 significa "creato
+  /// da una versione che scrive l'ancora" (se manca, il backup è
+  /// incompleto o manomesso).
+  int get trialAnchorVersion =>
+      (manifest['trialAnchorVersion'] as num?)?.toInt() ?? 0;
 
   Future<void> dispose() => _tryDeleteDir(Directory(tempDir));
 }

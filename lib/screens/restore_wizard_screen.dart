@@ -10,6 +10,7 @@ import '../core/utils/format.dart';
 import '../repositories/haccp_repository.dart';
 import '../services/attachment_recovery_service.dart';
 import '../services/attachment_service.dart' show formatBytes;
+import '../services/backup_envelope.dart';
 import '../services/backup_service.dart';
 import '../services/cloud/cloud_storage.dart';
 import '../services/cloud/google_drive_provider.dart';
@@ -179,12 +180,20 @@ class _RestoreWizardScreenState extends State<RestoreWizardScreen> {
         ..sort((a, b) => backupSortDate(b).compareTo(backupSortDate(a)));
       final entries = <_BackupEntry>[];
       for (final file in backups.take(30)) {
-        final header = await provider.peekFirstBytes(file.id, 4);
-        final encrypted = header == null
+        // 5 byte: riconoscono sia l'involucro dell'app (HPBK1) sia i
+        // vecchi cifrati con password (BHB1/BHB2).
+        final header = await provider.peekFirstBytes(file.id, 5);
+        final decoded = header == null ? null : utf8LikeDecode(header);
+        final encrypted = decoded == null
             ? null
-            : utf8LikeDecode(header) == BackupService.magicV1 ||
-                utf8LikeDecode(header) == BackupService.magicV2;
-        entries.add(_BackupEntry(file: file, encrypted: encrypted));
+            : decoded.startsWith(BackupService.magicV1) ||
+                decoded.startsWith(BackupService.magicV2);
+        entries.add(_BackupEntry(
+          file: file,
+          encrypted: encrypted,
+          protectedByApp:
+              decoded != null && decoded.startsWith(BackupEnvelope.magic),
+        ));
       }
       if (!mounted) return;
       setState(() {
@@ -592,9 +601,9 @@ class _RestoreWizardScreenState extends State<RestoreWizardScreen> {
             padding: const EdgeInsets.all(14),
             child: Text(
               'Il ripristino non tocca mai la licenza di questo telefono, '
-              'né i token degli account. I backup completi con le foto non '
-              'sono cifrabili: solo i backup del database possono essere '
-              'protetti da password.',
+              'né i token degli account. I backup sono protetti '
+              'dall\u2019app; la password è disponibile solo per i backup '
+              'del database.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -727,7 +736,7 @@ class _RestoreWizardScreenState extends State<RestoreWizardScreen> {
               subtitle: Text(
                 '${fmtDateTime(entry.sortDate)}'
                 '${entry.file.size == null ? '' : ' • ${formatBytes(entry.file.size!)}'}'
-                '${entry.encrypted == true ? ' • Cifrato' : ''}',
+                '${entry.encrypted == true ? ' • Cifrato' : entry.protectedByApp ? ' • Protetto dall\u2019app' : ''}',
               ),
               trailing: _selected == entry
                   ? const Icon(Icons.check_circle)
@@ -751,6 +760,9 @@ class _RestoreWizardScreenState extends State<RestoreWizardScreen> {
   Widget? _encryptedIcon(_BackupEntry entry, ThemeData theme) {
     if (entry.encrypted == true) {
       return Icon(Icons.lock_outline, color: theme.colorScheme.primary);
+    }
+    if (entry.protectedByApp) {
+      return const Icon(Icons.verified_user_outlined);
     }
     if (entry.encrypted == null) return const Icon(Icons.help_outline);
     return entry.isFull
@@ -1093,10 +1105,16 @@ class _StageProgressIndicator extends StatelessWidget {
 }
 
 class _BackupEntry {
-  _BackupEntry({required this.file, this.encrypted});
+  _BackupEntry({required this.file, this.encrypted, this.protectedByApp = false});
 
   final CloudFile file;
+
+  /// Backup cifrato con password (strato interno): per i backup con
+  /// l'involucro dell'app non è distinguibile senza scaricarli.
   final bool? encrypted;
+
+  /// Backup chiuso nell'involucro cifrato dell'app (HPBK1).
+  final bool protectedByApp;
 
   bool get isFull => file.name.startsWith(BackupService.fullBackupPrefix);
 

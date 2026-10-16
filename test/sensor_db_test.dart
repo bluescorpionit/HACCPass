@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:haccpass/core/database/app_database.dart';
 import 'package:haccpass/core/sensors/sensor_source.dart';
 import 'package:haccpass/models/haccp_models.dart';
 import 'package:haccpass/repositories/haccp_repository.dart';
+import 'package:haccpass/services/backup_envelope.dart';
 import 'package:haccpass/services/backup_service.dart';
 
 /// Modello dati sensori (Prompt 7, Fase 2): migrazione v4→v5, vincolo
@@ -341,9 +343,17 @@ void main() {
 
       final backup = BackupService(repository: repository, appVersion: 'test');
       final path = await backup.createBackup();
-      final bytes = await File(path).readAsBytes();
+      var bytes = await File(path).readAsBytes();
 
-      // Il .bhb senza password è uno zip con il DB integro.
+      // Dal Prompt 20 ogni backup nuovo è chiuso nell'involucro HPBK1:
+      // va rimosso prima di leggere lo ZIP interno.
+      if (String.fromCharCodes(bytes.take(5)) == 'HPBK1') {
+        bytes = await BackupEnvelope().openBytes(
+          Uint8List.fromList(bytes),
+        );
+      }
+
+      // Lo ZIP interno contiene il DB integro.
       final archive = ZipDecoder().decodeBytes(bytes);
       final entry = archive.files.firstWhere((f) => f.name == 'blue_haccp.db');
 

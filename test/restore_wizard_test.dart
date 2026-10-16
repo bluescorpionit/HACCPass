@@ -172,7 +172,11 @@ void main() {
 
       expect(find.text('Solo dati'), findsNWidgets(2));
       expect(find.text('Completo con foto'), findsOneWidget);
-      expect(find.textContaining('Cifrato'), findsOneWidget);
+      // Dal Prompt 20 tutti i backup nuovi portano l'involucro HPBK1:
+      // il badge in elenco è "Protetto dall'app" (la password eventuale
+      // si chiede all'apertura, non si può spiare dai primi byte).
+      expect(find.textContaining('Cifrato'), findsNothing);
+      expect(find.textContaining('Protetto dall\u2019app'), findsNWidgets(3));
       // Il più recente (20261008_0930) è preselezionato e il pulsante attivo.
       expect(find.text('Ripristina questo backup'), findsOneWidget);
     } finally {
@@ -284,7 +288,9 @@ void main() {
 
       await openDriveList(tester);
       await tester.tap(find.text('Ripristina questo backup'));
-      for (var i = 0; i < 10; i++) {
+      // L'apertura del backup (involucro HPBK1 + ZIP) fa parecchi
+      // round-trip di I/O reali: un passo per hop.
+      for (var i = 0; i < 30; i++) {
         await step(tester);
       }
 
@@ -296,7 +302,7 @@ void main() {
 
       await tester.tap(find.text('Ripristina ora'));
       // Il ripristino vero tocca DB e file: molti flush.
-      for (var i = 0; i < 60; i++) {
+      for (var i = 0; i < 150; i++) {
         await step(tester);
       }
 

@@ -204,6 +204,66 @@ void main() {
 
       expect(result.start, t0);
       expect(result.firstInstall, isFalse);
+      expect(result.lastSeen, isNotNull,
+          reason: 'lastSeen serve all\'export per il backup');
+    });
+  });
+
+  group('TrialAnchor.exportSigned/parseSigned (backup, Prompt 20)', () {
+    test('roundtrip: stesso formato e stessa firma del file', () async {
+      final storage = MemoryTrialAnchorStorage();
+      final t0 = DateTime(2026, 10, 1, 9);
+      final anchorInstance = anchor(storage, now: () => t0);
+      final result = await anchorInstance.synchronize();
+
+      final exported = anchorInstance.exportSigned(
+        result.start,
+        result.lastSeen!,
+      );
+      expect(exported, isNotNull);
+
+      // Stesso contenuto del file di piattaforma: stesse chiavi, stessa
+      // firma (nessuna logica duplicata).
+      expect(exported, storage.value);
+
+      final parsed = anchor(storage).parseSigned(exported!);
+      expect(parsed, isNotNull);
+      expect(parsed!.$1.isAtSameMomentAs(result.start), isTrue);
+      expect(parsed.$2.isAtSameMomentAs(result.lastSeen!), isTrue);
+
+      // Solo le due date e la firma: nessun altro dato personale.
+      final map = jsonDecode(exported) as Map<String, dynamic>;
+      expect(map.keys.toSet(), {'v', 'start', 'lastSeen', 'mac'});
+    });
+
+    test('firma modificata: parseSigned restituisce null', () {
+      final anchorInstance = anchor(MemoryTrialAnchorStorage());
+      final exported = anchorInstance.exportSigned(
+        DateTime(2026, 10, 1),
+        DateTime(2026, 10, 2),
+      )!;
+      final map = jsonDecode(exported) as Map<String, dynamic>;
+
+      // Data spostata avanti senza ricalcolare il MAC.
+      map['start'] = DateTime(2026, 10, 20).toUtc().toIso8601String();
+      expect(anchor(MemoryTrialAnchorStorage()).parseSigned(jsonEncode(map)),
+          isNull);
+
+      // MAC sostituito con uno inventato.
+      final map2 = jsonDecode(exported) as Map<String, dynamic>;
+      map2['mac'] = base64Encode(List.filled(32, 7));
+      expect(anchor(MemoryTrialAnchorStorage()).parseSigned(jsonEncode(map2)),
+          isNull);
+    });
+
+    test('segreto vuoto (debug): non firma e non verifica', () {
+      final anchorInstance =
+          TrialAnchor(secret: '', storage: MemoryTrialAnchorStorage());
+      expect(
+        anchorInstance.exportSigned(DateTime(2026, 10, 1), DateTime(2026, 10, 2)),
+        isNull,
+      );
+      expect(anchorInstance.parseSigned('qualsiasi'), isNull);
     });
   });
 }

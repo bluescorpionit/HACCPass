@@ -36,7 +36,10 @@
 ///   ripresa dell'app);
 /// - se `now < lastSeen - 24 h` l'orologio risulta alterato: la prova è
 ///   considerata scaduta con stato esplicito, senza crash e senza
-///   cancellare dati.
+///   cancellare dati;
+/// - la stessa ancora firmata viaggia anche nel manifest dei backup
+///   Drive (`exportSigned`/`parseSigned`, Prompt 20): rimuoverla o
+///   alterarla nel backup non regala giorni di prova.
 library;
 
 import 'dart:convert';
@@ -52,12 +55,17 @@ class TrialAnchorResult {
   const TrialAnchorResult({
     required this.start,
     required this.clockTampered,
+    this.lastSeen,
     this.anchorAltered = false,
     this.firstInstall = false,
   });
 
   /// Data di inizio effettiva della prova (la più antica trovata).
   final DateTime start;
+
+  /// `lastSeen` dell'ancora dopo la sincronizzazione (mai inferiore a
+  /// quello precedente): serve a esportare l'ancora firmata nel backup.
+  final DateTime? lastSeen;
 
   /// Orologio del dispositivo indietro rispetto all'ultimo avvio
   /// (`now < lastSeen - 24 h`).
@@ -241,6 +249,7 @@ class TrialAnchor {
     return TrialAnchorResult(
       start: start,
       clockTampered: clockTampered,
+      lastSeen: newLastSeen,
       anchorAltered: altered,
       firstInstall: firstInstall,
     );
@@ -255,6 +264,28 @@ class TrialAnchor {
     } catch (_) {
       // Best-effort.
     }
+  }
+
+  /// Esporta l'ancora FIRMATA per il manifest del backup (Prompt 20):
+  /// identico formato e identica firma del file `trial_anchor.json`
+  /// (riusa [_encode], nessuna logica duplicata). Contiene solo le due
+  /// date e il MAC: nessun altro dato personale.
+  ///
+  /// Restituisce null se il segreto è vuoto (solo debug: non si firma)
+  /// o le date non sono coerenti: il campo viene omesso dal backup.
+  String? exportSigned(DateTime start, DateTime lastSeen) {
+    if (secret.isEmpty) return null;
+    if (lastSeen.isBefore(start)) return null;
+    return _encode(start, lastSeen);
+  }
+
+  /// Verifica e decodifica un'ancora esportata con [exportSigned]:
+  /// restituisce `(start, lastSeen)` se la firma è valida, null se il
+  /// contenuto è assente/alterato. Con il segreto vuoto (solo debug)
+  /// non può verificare: restituisce null.
+  (DateTime, DateTime)? parseSigned(String raw) {
+    if (secret.isEmpty) return null;
+    return _parse(raw);
   }
 
   String _mac(DateTime start, DateTime lastSeen) {

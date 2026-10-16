@@ -26,12 +26,26 @@ dello store e la riserva locale).
 1. **Prova primaria, gestita dallo store.** L'abbonamento annuale ha
    un'offerta con fase gratuita di 14 giorni su Google Play e App Store.
    Gli store ricordano a quale account è già stata concessa la prova:
-   **reinstallare l'app non la rigenera**.
+   **reinstallare l'app non la rigenera**. Questa è la difesa forte.
 2. **Prova locale di riserva, senza store** (14 giorni,
    `LicenseService.trialDays`). Copre i dispositivi senza store (build
    di test, installazioni fuori dallo store) e il periodo precedente
    alla pubblicazione. Resiste alla reinstallazione e all'alterazione
    dell'orologio tramite **ancora** (vedi sotto).
+
+La data di inizio della prova locale vive in TRE supporti, tutti con la
+regola "vince la più antica, mai spostata in avanti":
+
+- **database** (`trial_started_at`, copia non firmata);
+- **ancora della piattaforma** (file incluso nel backup automatico
+  Android / Keychain iOS), firmata HMAC;
+- dal Prompt 20 anche nel **backup Drive**: lo stesso ancoraggio firmato
+  viaggia nel `manifest.json` del backup (`trialAnchor` + campo
+  `trialAnchorVersion`, vedi `docs/backup.md`). Chi ripristina i dati su
+  una reinstallazione riporta la data originale; chi cancella o altera
+  la data DENTRO il backup non ottiene giorni in più (i dati si
+  ripristinano comunque). I backup creati dalla versione già pubblicata
+  (senza campo ancora) si ripristinano con la regola storica.
 
 ### L'ancora della prova (`lib/core/license/trial_anchor.dart`)
 
@@ -48,6 +62,12 @@ sopravvive alla disinstallazione.
   `data_extraction_rules.xml` (Android 12+): presenti gli `<include>`
   il backup contiene **solo i percorsi inclusi** (il database e gli
   allegati restano fuori, nessun ripristino parziale).
+- **Backup Drive (dal Prompt 20)**: l'ancora firmata è nel manifest del
+  backup. Con firma valida la sua data partecipa alla regola "vince la
+  più antica"; con firma non valida o mancante in un backup che la
+  dichiarava (`trialAnchorVersion ≥ 1`), il ripristino ignora OGNI data
+  della prova contenuta nel backup (nessun giorno in più) ma ripristina
+  i dati; nei backup vecchi vale la regola storica del database.
 
 Contenuto firmato con HMAC-SHA256 usando `BH_ANCHOR_SECRET` (vedi
 `lib/core/license/app_integrity.dart`). Un contenuto con MAC non valido
@@ -58,11 +78,14 @@ ripresa; se `now < lastSeen − 24 h` stato esplicito "Orologio del
 dispositivo alterato", sola lettura, nessuna perdita di dati.
 
 **Limiti documentati**: su Android il file nel backup sopravvive alla
-reinstallazione solo se l'utente ha il **backup Google attivo** (altrimenti la prova locale riparte da 14 giorni: best-effort
-documentato; la prova dello store non ha questo limite). Inoltre il
-segreto è una protezione LEGGERA: sta nel binario, non è un segreto
-forte e **non protegge nessuna licenza** (che dipende solo dallo
-store).
+reinstallazione solo se l'utente ha il **backup Google attivo**. Chi
+**non ripristina i dati** e reinstalla l'app riparte da 14 giorni di
+prova locale (mentre la prova dello store non si rigenera). Chi usa un
+**altro account** o **modifica a mano il formato** del backup con
+strumenti adeguati può aggirare la barriera dell'ancora: è una
+protezione LEGGERA, il segreto sta nel binario e **non protegge nessuna
+licenza** (che dipende solo dallo store). La difesa forte resta la
+prova e l'abbonamento gestiti dallo store.
 
 ## Creare l'abbonamento con prova gratuita
 

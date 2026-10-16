@@ -148,6 +148,31 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
     _refresh();
   }
 
+  /// Nota mostrata UNA sola volta alla prima creazione di un backup
+  /// con il nuovo formato (Prompt 20: involucro dell'app): i backup
+  /// nuovi si aprono solo con HACCPass aggiornato. Testo sobrio, senza
+  /// promesse di inviolabilità.
+  Future<void> _maybeShowNewFormatNote() async {
+    try {
+      if (await widget.repository.getSetting('backup_format_note_shown') ==
+          '1') {
+        return;
+      }
+      await widget.repository.setSetting('backup_format_note_shown', '1');
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'I backup creati da questa versione si aprono solo con '
+          'HACCPass aggiornato.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _backupNow() async {
     setState(() => busy = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -165,6 +190,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
         'last_backup_at',
         DateTime.now().toIso8601String(),
       );
+      await _maybeShowNewFormatNote();
 
       if (_provider.isConnected) {
         await widget.backup.uploadBackup(
@@ -226,6 +252,7 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
         return;
       }
       if (path == null || !mounted) return;
+      await _maybeShowNewFormatNote();
 
       await SharePlus.instance.share(
         ShareParams(
@@ -505,7 +532,8 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Il backup del database NON include le foto e i PDF: per '
-                  'quelli usa Google Drive o il backup completo.',
+                  'quelli usa Google Drive o il backup completo. I backup '
+                  'sono protetti dall\u2019app.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -523,7 +551,8 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Database + tutte le foto, scritto un file alla volta '
-                  '(sicuro anche con migliaia di foto). Non \u00E8 cifrabile.',
+                  '(sicuro anche con migliaia di foto). Non accetta una '
+                  'password, ma \u00E8 protetto dall\u2019app.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
